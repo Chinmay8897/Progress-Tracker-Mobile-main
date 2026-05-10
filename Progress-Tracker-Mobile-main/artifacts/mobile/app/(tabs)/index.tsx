@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   FlatList,
   Platform,
@@ -17,10 +17,12 @@ import TaskCard from "@/components/TaskCard";
 import TaskFormModal from "@/components/TaskFormModal";
 import VoiceCommandPanel from "@/components/VoiceCommandPanel";
 import { Priority, TaskStatus, useApp } from "@/context/AppContext";
-import { parseVoiceCommand } from "@/domain/voice/CommandParser";
-import { createTaskFromVoiceCommand, type TaskVoicePrefill } from "@/domain/voice/TaskService";
+import { parseCommand } from "@/domain/voice/CommandParser";
+import { executeCommand, type ExecutionContext } from "@/domain/voice/CommandExecutor";
+import { requiresConfirmation, type ParsedCommand, type TaskPrefill } from "@/domain/voice/types";
 import { useColors } from "@/hooks/useColors";
 import { useVoiceCommand } from "@/hooks/useVoiceCommand";
+import { notificationsApi, voiceLogsApi } from "@/services/api";
 
 type FilterType = "all" | Priority | TaskStatus | string;
 
@@ -42,7 +44,7 @@ const STATUS_OPTIONS = [
 
 export default function DashboardScreen() {
   const colors = useColors();
-  const { tasks, users, currentUser, isHeadManager, addTask } = useApp();
+  const { tasks, users, currentUser, isHeadManager, addTask, updateTask, moveTaskToDate } = useApp();
   const insets = useSafeAreaInsets();
 
   const [priorityFilter, setPriorityFilter] = useState<FilterType>("all");
@@ -51,8 +53,13 @@ export default function DashboardScreen() {
   const [showModal, setShowModal] = useState(false);
   const [showVoicePanel, setShowVoicePanel] = useState(false);
   const [actionTaken, setActionTaken] = useState<string | null>(null);
-  const [voicePrefill, setVoicePrefill] = useState<TaskVoicePrefill | null>(null);
+  const [voicePrefill, setVoicePrefill] = useState<TaskPrefill | null>(null);
   const [voiceModalPrompt, setVoiceModalPrompt] = useState<string | null>(null);
+
+  // Confirmation flow state
+  const [pendingCommand, setPendingCommand] = useState<ParsedCommand | null>(null);
+  const executingCommandRef = useRef<string | null>(null);
+  const voiceStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const myTasks = isHeadManager ? tasks : tasks.filter(t => t.assigneeId === currentUser?.id);
 
@@ -84,76 +91,155 @@ export default function DashboardScreen() {
   const topPadding = insets.top + (Platform.OS === "web" ? 67 : 0);
   const bottomPadding = insets.bottom + 100 + (Platform.OS === "web" ? 34 : 0);
 
-  const processCommand = useCallback((text: string) => {
-    const rawText = text.trim();
-    if (!rawText) return;
+  // ── Build execution context ───────────────────────────────────────────────
 
-    setActionTaken(null);
+  const buildExecCtx = useCallback((): ExecutionContext | null => {
+    if (!currentUser) return null;
+    return { users, tasks, currentUser, addTask, updateTask, moveTaskToDate };
+  }, [users, tasks, currentUser, addTask, updateTask, moveTaskToDate]);
 
-    void (async () => {
-      try {
-        const parsed = parseVoiceCommand(rawText, {
-          knownUsers: users.map(u => ({ name: u.name })),
-        });
+  // ── Execute a parsed command ──────────────────────────────────────────────
 
-        let action: string | null = null;
-        let haptics: Haptics.NotificationFeedbackType = Haptics.NotificationFeedbackType.Success;
+  const runCommand = useCallback(async (cmd: ParsedCommand) => {
+    const executionKey = `${cmd.intent}:${cmd.rawText.trim().toLowerCase()}`;
+    if (executingCommandRef.current === executionKey) {
+      return;
+    }
+    executingCommandRef.current = executionKey;
 
-        if (parsed.kind === "clear_filters") {
+    const ctx = buildExecCtx();
+    if (!ctx) {
+      executingCommandRef.current = null;
+      setActionTaken("Please log in to use voice commands.");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+
+    try {
+      const result = await executeCommand(cmd, ctx);
+      let haptic = Haptics.NotificationFeedbackType.Success;
+      let executionStatus: "succeeded" | "failed" | "needs_info" = "succeeded";
+
+      switch (result.kind) {
+        case "created":
+        case "updated":
+        case "moved":
+        case "whatsapp_sent":
+          setActionTaken(result.message);
+          void notificationsApi.log({
+            type: "whatsapp_forward",
+            message: result.message,
+            targetUser: ctx.currentUser.id,
+            metadata: { rawCommand: cmd.rawText, intent: cmd.intent },
+          }).catch(() => undefined);
+          break;
+        case "filters_cleared":
           setPriorityFilter("all");
           setStatusFilter("all");
           setAssigneeFilter("all");
-          action = "All filters cleared";
-        } else if (parsed.kind === "set_priority_filter") {
-          setPriorityFilter(parsed.priority);
-          setStatusFilter("all");
-          action = parsed.priority === "all" ? "Priority filter cleared" : `Filtered by ${parsed.priority} priority`;
-        } else if (parsed.kind === "set_status_filter") {
-          setStatusFilter(parsed.status);
-          setPriorityFilter("all");
-          action = parsed.status === "all" ? "Status filter cleared" : `Filtered by ${String(parsed.status).replace(/_/g, " ")}`;
-        } else if (parsed.kind === "open_task_form") {
-          setVoicePrefill(null);
+          setActionTaken(result.message);
+          break;
+        case "filter_applied":
+          if (result.filterType === "priority") {
+            setPriorityFilter(result.filterValue);
+            setStatusFilter("all");
+          } else {
+            setStatusFilter(result.filterValue);
+            setPriorityFilter("all");
+          }
+          setActionTaken(result.message);
+          break;
+        case "form_opened":
+          setVoicePrefill(result.prefill);
           setVoiceModalPrompt(null);
           setShowModal(true);
-          action = "Opened new task form";
-        } else if (parsed.kind === "create_task") {
-          if (!currentUser) {
-            action = "Please log in to create tasks.";
-            haptics = Haptics.NotificationFeedbackType.Error;
-          } else {
-            const result = await createTaskFromVoiceCommand({
-              command: parsed.command,
-              users,
-              currentUser,
-              addTask,
-            });
-
-            if (result.kind === "created") {
-              action = result.message;
-            } else if (result.kind === "needs_info") {
-              setVoicePrefill(result.prefill);
-              setVoiceModalPrompt(result.message);
-              setShowModal(true);
-              action = result.message;
-            } else {
-              action = result.message;
-              haptics = Haptics.NotificationFeedbackType.Error;
-            }
-          }
-        } else {
-          action = "Could not understand that command.";
-          haptics = Haptics.NotificationFeedbackType.Error;
-        }
-
-        setActionTaken(action);
-        Haptics.notificationAsync(haptics);
-      } catch {
-        setActionTaken("Something went wrong while processing that command.");
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          setActionTaken(result.message);
+          break;
+        case "needs_info":
+          setVoicePrefill(result.prefill);
+          setVoiceModalPrompt(result.message);
+          setShowModal(true);
+          setActionTaken(result.message);
+          haptic = Haptics.NotificationFeedbackType.Warning;
+          executionStatus = "needs_info";
+          break;
+        case "error":
+          setActionTaken(result.message);
+          haptic = Haptics.NotificationFeedbackType.Error;
+          executionStatus = "failed";
+          break;
       }
-    })();
-  }, [users, currentUser, addTask]);
+
+      void voiceLogsApi.log({
+        rawCommand: cmd.rawText,
+        parsedIntent: cmd.intent,
+        executionStatus,
+        metadata: { resultKind: result.kind },
+      }).catch(() => undefined);
+      Haptics.notificationAsync(haptic);
+    } catch {
+      void voiceLogsApi.log({
+        rawCommand: cmd.rawText,
+        parsedIntent: cmd.intent,
+        executionStatus: "failed",
+      }).catch(() => undefined);
+      setActionTaken("Something went wrong. Please try again.");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setTimeout(() => {
+        if (executingCommandRef.current === executionKey) {
+          executingCommandRef.current = null;
+        }
+      }, 1500);
+    }
+  }, [buildExecCtx]);
+
+  // ── Process incoming text (from voice or manual input) ────────────────────
+
+  const processCommand = useCallback((text: string) => {
+    const raw = text.trim();
+    if (!raw) return;
+
+    setActionTaken(null);
+    setPendingCommand(null);
+
+    const parsed = parseCommand(raw, {
+      knownUsers: users.map(u => ({ name: u.name })),
+    });
+
+    // If it's a mutation command, show confirmation first
+    if (requiresConfirmation(parsed.intent)) {
+      setPendingCommand(parsed);
+      return;
+    }
+
+    // Non-mutation commands execute immediately
+    void runCommand(parsed);
+  }, [users, runCommand]);
+
+  // ── Confirmation handlers ─────────────────────────────────────────────────
+
+  const handleConfirm = useCallback(() => {
+    if (!pendingCommand) return;
+    const cmd = pendingCommand;
+    setPendingCommand(null);
+    void runCommand(cmd);
+  }, [pendingCommand, runCommand]);
+
+  const handleDismiss = useCallback(() => {
+    if (pendingCommand) {
+      void voiceLogsApi.log({
+        rawCommand: pendingCommand.rawText,
+        parsedIntent: pendingCommand.intent,
+        executionStatus: "cancelled",
+      }).catch(() => undefined);
+    }
+    setPendingCommand(null);
+    setActionTaken("Command cancelled.");
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+  }, [pendingCommand]);
+
+  // ── Voice hook ────────────────────────────────────────────────────────────
 
   const { start, finish, stop, status: voiceStatus, transcript, error, isSupported } = useVoiceCommand({
     onResult: processCommand,
@@ -163,24 +249,49 @@ export default function DashboardScreen() {
   const handleVoiceFab = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (showVoicePanel) {
+      if (voiceStartTimerRef.current) {
+        clearTimeout(voiceStartTimerRef.current);
+        voiceStartTimerRef.current = null;
+      }
       stop();
       setShowVoicePanel(false);
       setActionTaken(null);
+      setPendingCommand(null);
     } else {
       setActionTaken(null);
+      setPendingCommand(null);
       setShowVoicePanel(true);
-      // Auto-start listening if supported
       if (isSupported) {
-        setTimeout(() => start(), 300);
+        if (voiceStartTimerRef.current) {
+          clearTimeout(voiceStartTimerRef.current);
+        }
+        voiceStartTimerRef.current = setTimeout(() => {
+          voiceStartTimerRef.current = null;
+          start();
+        }, 300);
       }
     }
   };
 
   const handleCloseVoice = () => {
+    if (voiceStartTimerRef.current) {
+      clearTimeout(voiceStartTimerRef.current);
+      voiceStartTimerRef.current = null;
+    }
     stop();
     setShowVoicePanel(false);
     setActionTaken(null);
+    setPendingCommand(null);
   };
+
+  React.useEffect(() => {
+    return () => {
+      if (voiceStartTimerRef.current) {
+        clearTimeout(voiceStartTimerRef.current);
+        voiceStartTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const voiceActive = showVoicePanel;
 
@@ -214,45 +325,32 @@ export default function DashboardScreen() {
     fab: {
       position: "absolute",
       right: 20,
-      bottom: bottomPadding - 70,
-      width: 56,
-      height: 56,
-      borderRadius: 28,
+      bottom: bottomPadding - 20,
+      width: 56, height: 56, borderRadius: 28,
       backgroundColor: colors.primary,
-      alignItems: "center",
-      justifyContent: "center",
+      alignItems: "center", justifyContent: "center",
       shadowColor: colors.primary,
       shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.4,
-      shadowRadius: 8,
-      elevation: 8,
+      shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
     },
     voiceFab: {
       position: "absolute",
       left: 20,
-      bottom: bottomPadding - 70,
-      width: 56,
-      height: 56,
-      borderRadius: 28,
+      bottom: bottomPadding - 20,
+      width: 56, height: 56, borderRadius: 28,
       backgroundColor: voiceActive ? colors.critical : colors.card,
-      alignItems: "center",
-      justifyContent: "center",
+      alignItems: "center", justifyContent: "center",
       shadowColor: voiceActive ? colors.critical : "#000",
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: voiceActive ? 0.35 : 0.15,
-      shadowRadius: 8,
-      elevation: 6,
+      shadowRadius: 8, elevation: 6,
       borderWidth: 1.5,
       borderColor: voiceActive ? colors.critical : colors.border,
     },
     filterSection: { paddingHorizontal: 16, marginBottom: 6 },
     filterLabel: { fontSize: 10, fontWeight: "700", color: colors.mutedForeground, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 6 },
     voicePanelWrapper: {
-      position: "absolute",
-      left: 0,
-      right: 0,
-      bottom: 0,
-      zIndex: 100,
+      position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 100,
     },
   });
 
@@ -359,10 +457,13 @@ export default function DashboardScreen() {
             transcript={transcript}
             error={error}
             actionTaken={actionTaken}
+            pendingCommand={pendingCommand}
             onStartListening={start}
             onFinishListening={finish}
             onClose={handleCloseVoice}
             onManualCommand={processCommand}
+            onConfirm={handleConfirm}
+            onDismiss={handleDismiss}
             isSupported={isSupported}
           />
         </Animated.View>

@@ -1,0 +1,41 @@
+/**
+ * Centralized environment configuration.
+ *
+ * All env-dependent values are accessed through this module so that
+ * components never reference `process.env` directly.
+ *
+ * SECURITY: The OpenAI API key is NO LONGER stored here.
+ * It lives server-side only in the backend .env file.
+ */
+
+import Constants from "expo-constants";
+
+function getEnvVar(key: string): string {
+  const fromProcess = (process.env as Record<string, string | undefined>)[key];
+  if (fromProcess) return fromProcess.trim();
+
+  const fromExpoExtra = (Constants.expoConfig as any)?.extra?.[key] as string | undefined;
+  if (fromExpoExtra) return fromExpoExtra.trim();
+
+  return "";
+}
+
+function normalizeApiBaseUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+  return trimmed.replace(/\/+$/, "");
+}
+
+export const config = {
+  /** Base URL for the backend API (e.g., http://192.168.1.100:3001). */
+  apiBaseUrl: normalizeApiBaseUrl(getEnvVar("EXPO_PUBLIC_API_BASE_URL")),
+
+  /** Supabase project URL. Safe to expose in Expo public config. */
+  supabaseUrl: getEnvVar("EXPO_PUBLIC_SUPABASE_URL"),
+
+  /** Supabase anon key. Safe to expose; database access is still governed by RLS. */
+  supabaseAnonKey: getEnvVar("EXPO_PUBLIC_SUPABASE_ANON_KEY"),
+
+  /** Whether the app is running in development mode. */
+  isDev: typeof __DEV__ !== "undefined" ? __DEV__ : true,
+} as const;

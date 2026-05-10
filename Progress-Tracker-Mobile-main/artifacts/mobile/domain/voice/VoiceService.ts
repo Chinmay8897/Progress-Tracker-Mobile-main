@@ -1,22 +1,22 @@
+/**
+ * VoiceService — Speech-to-text capture.
+ *
+ * Two backends:
+ * - Web:    Web Speech API (browser-side, no API key needed)
+ * - Native: Records audio with expo-av, sends to backend proxy
+ *           (backend forwards to OpenAI Whisper — API key is server-side only)
+ *
+ * Guards against double-start, cleans up listeners/recording properly,
+ * and maps all known error codes to user-friendly messages.
+ */
+
 import { Platform } from "react-native";
-import Constants from "expo-constants";
 import { Audio } from "expo-av";
+import { transcribeAudio } from "@/services/api";
+import type { VoiceStatus, VoiceCaptureCallbacks, VoiceCaptureOptions } from "./types";
 
-export type VoiceStatus = "idle" | "listening" | "processing" | "done" | "error" | "unsupported";
-
-export interface VoiceServiceCallbacks {
-  onStatus: (status: VoiceStatus) => void;
-  onTranscript: (text: string) => void;
-  onError: (message: string) => void;
-  onResult: (finalTranscript: string) => void;
-  onEnd?: () => void;
-}
-
-export interface VoiceServiceOptions {
-  /** Auto-finish after this window (ms). Default: 12000 */
-  maxListenMs?: number;
-  language?: string;
-}
+// Re-export the status type for consumers.
+export type { VoiceStatus };
 
 function isWebSpeechSupported(): boolean {
   return (
@@ -26,51 +26,46 @@ function isWebSpeechSupported(): boolean {
   );
 }
 
-function getOpenAiApiKey(): string {
-  const envKey = (process.env as any)?.EXPO_PUBLIC_OPENAI_API_KEY as string | undefined;
-  const extraKey = (Constants.expoConfig as any)?.extra?.EXPO_PUBLIC_OPENAI_API_KEY as string | undefined;
-  return (envKey ?? extraKey ?? "").trim();
+function getMimeType(uri: string): { mimeType: string; filename: string } {
+  const ext = uri.toLowerCase().match(/\.([a-z0-9]+)(\?|#|$)/)?.[1] ?? "m4a";
+  const map: Record<string, string> = {
+    m4a: "audio/m4a", mp4: "audio/mp4", mp3: "audio/mpeg",
+    wav: "audio/wav", caf: "audio/x-caf", aac: "audio/aac",
+    ogg: "audio/ogg", opus: "audio/opus", webm: "audio/webm",
+    "3gp": "audio/3gpp", "3gpp": "audio/3gpp",
+  };
+  return { mimeType: map[ext] ?? "audio/m4a", filename: `speech.${ext}` };
 }
 
-function getMimeTypeFromUri(uri: string): { mimeType: string; filename: string } {
-  const uriLower = uri.toLowerCase();
-  const extMatch = uriLower.match(/\.([a-z0-9]+)(\?|#|$)/);
-  const ext = extMatch?.[1] ?? "m4a";
-  const mimeByExt: Record<string, string> = {
-    m4a: "audio/m4a",
-    mp4: "audio/mp4",
-    mp3: "audio/mpeg",
-    wav: "audio/wav",
-    caf: "audio/x-caf",
-    aac: "audio/aac",
-    ogg: "audio/ogg",
-    opus: "audio/opus",
-    webm: "audio/webm",
-    "3gp": "audio/3gpp",
-    "3gpp": "audio/3gpp",
-    "3g2": "audio/3gpp2",
-  };
-  return {
-    mimeType: mimeByExt[ext] ?? "audio/m4a",
-    filename: `speech.${ext}`,
-  };
-}
+/** Map all Web Speech API error codes to actionable messages. */
+const WEB_SPEECH_ERRORS: Record<string, string> = {
+  "not-allowed": "Microphone access denied. Please allow microphone access in your browser settings.",
+  "no-speech": "No speech detected. Please try again or type your command below.",
+  "network": "Voice recognition requires an internet connection. Please type your command in the text box below.",
+  "audio-capture": "No microphone found. Please connect a microphone or type your command below.",
+  "aborted": "Voice recognition was interrupted. Please try again.",
+  "service-not-allowed": "Voice recognition is not permitted in this browser. Please type your command below.",
+  "language-not-supported": "Your language is not supported. Please type your command in English below.",
+  "bad-grammar": "Voice recognition encountered an issue. Please try again.",
+};
 
 export class VoiceService {
-  private recognition: any | null = null;
+  private recognition: any = null;
   private recording: Audio.Recording | null = null;
-  private timer: any = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
   private status: VoiceStatus = "idle";
+  private disposed = false;
+  private finishing = false;
 
   private readonly maxListenMs: number;
   private readonly language: string;
 
   constructor(
-    private readonly callbacks: VoiceServiceCallbacks,
-    options: VoiceServiceOptions = {},
+    private readonly cb: VoiceCaptureCallbacks,
+    opts: VoiceCaptureOptions = {},
   ) {
-    this.maxListenMs = options.maxListenMs ?? 12_000;
-    this.language = options.language ?? "en-US";
+    this.maxListenMs = opts.maxListenMs ?? 15_000;
+    this.language = opts.language ?? "en-US";
   }
 
   get isSupported(): boolean {
@@ -78,70 +73,71 @@ export class VoiceService {
   }
 
   private setStatus(next: VoiceStatus) {
+    if (this.disposed) return;
     this.status = next;
-    this.callbacks.onStatus(next);
+    this.cb.onStatus(next);
   }
 
+  // ── Start ───────────────────────────────────────────────────────────────
+
   async start(): Promise<void> {
+    if (this.disposed) return;
+
+    // Guard: prevent double-start
+    if (this.status === "listening" || this.status === "processing") return;
+
     if (!this.isSupported) {
       this.setStatus("unsupported");
       return;
     }
 
-    this.callbacks.onTranscript("");
+    this.cb.onTranscript("");
+    this.cb.onError("");
 
     if (Platform.OS !== "web") {
-      await this.cancelNativeRecording();
+      await this.startNative();
+    } else {
+      this.startWeb();
+    }
+  }
 
-      try {
-        const apiKey = getOpenAiApiKey();
-        if (!apiKey) {
-          this.setStatus("error");
-          this.callbacks.onError("Missing OpenAI API key. Set EXPO_PUBLIC_OPENAI_API_KEY and try again.");
-          this.callbacks.onEnd?.();
-          return;
-        }
+  private async startNative(): Promise<void> {
+    await this.stopNativeRecording();
 
-        const perm = await Audio.requestPermissionsAsync();
-        if (!perm.granted) {
-          this.setStatus("error");
-          this.callbacks.onError("Microphone access denied. Please allow microphone access and try again.");
-          this.callbacks.onEnd?.();
-          return;
-        }
-
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: true,
-          playsInSilentModeIOS: true,
-        });
-
-        const rec = new Audio.Recording();
-        await rec.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-        await rec.startAsync();
-        this.recording = rec;
-
-        this.setStatus("listening");
-
-        // Auto-finish as a safety net. Prefer manual stop via finish().
-        this.timer = setTimeout(() => {
-          void this.finish();
-        }, this.maxListenMs);
-      } catch {
+    try {
+      const perm = await Audio.requestPermissionsAsync();
+      if (!perm.granted) {
         this.setStatus("error");
-        this.callbacks.onError("Could not start microphone. Try again.");
-        this.callbacks.onEnd?.();
+        this.cb.onError("Microphone access denied. Please allow microphone access and try again.");
+        this.cb.onEnd?.();
+        return;
       }
 
-      return;
-    }
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
 
-    if (!isWebSpeechSupported()) {
-      this.setStatus("unsupported");
-      return;
-    }
+      const rec = new Audio.Recording();
+      await rec.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      await rec.startAsync();
+      this.recording = rec;
 
+      this.setStatus("listening");
+
+      this.timer = setTimeout(() => void this.finish(), this.maxListenMs);
+    } catch {
+      this.setStatus("error");
+      this.cb.onError("Could not start microphone. Please try again.");
+      this.cb.onEnd?.();
+    }
+  }
+
+  private startWeb(): void {
     const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
 
     const recognition = new SpeechRecognition();
     recognition.lang = this.language;
@@ -150,71 +146,59 @@ export class VoiceService {
     recognition.continuous = false;
     this.recognition = recognition;
 
-    recognition.onstart = () => {
-      this.setStatus("listening");
-    };
+    recognition.onstart = () => this.setStatus("listening");
 
     recognition.onresult = (event: any) => {
+      if (this.disposed) return;
       const results = Array.from(event.results as SpeechRecognitionResultList);
       const latest = results[results.length - 1];
       const text = String(latest[0]?.transcript ?? "").trim();
-      this.callbacks.onTranscript(text);
+      this.cb.onTranscript(text);
 
       if (latest.isFinal) {
         this.setStatus("processing");
-        this.callbacks.onResult(text);
+        this.cb.onResult(text);
         setTimeout(() => {
           this.setStatus("done");
-          this.callbacks.onEnd?.();
-        }, 800);
+          this.cb.onEnd?.();
+        }, 600);
       }
     };
 
     recognition.onerror = (event: any) => {
-      const msg =
-        event.error === "not-allowed"
-          ? "Microphone access denied. Please allow microphone access and try again."
-          : event.error === "no-speech"
-          ? "No speech detected. Please try again."
-          : `Error: ${event.error}`;
-      this.callbacks.onError(msg);
+      if (this.disposed) return;
+      const msg = WEB_SPEECH_ERRORS[event.error]
+        ?? `Voice recognition failed (${event.error}). Please type your command below.`;
+      this.cb.onError(msg);
       this.setStatus("error");
-      this.callbacks.onEnd?.();
+      this.cb.onEnd?.();
     };
 
     recognition.onend = () => {
-      // If user stopped while listening, consider it done.
       if (this.status === "listening") {
         this.setStatus("done");
-        this.callbacks.onEnd?.();
+        this.cb.onEnd?.();
       }
     };
 
     try {
       recognition.start();
     } catch {
-      this.callbacks.onError("Could not start microphone. Try again.");
+      this.cb.onError("Could not start microphone. Try again.");
       this.setStatus("error");
     }
   }
 
-  /**
-   * Finish capture and produce a transcript (native: Whisper transcription).
-   *
-   * On web this just stops recognition; final transcript is produced by the API.
-   */
+  // ── Finish ──────────────────────────────────────────────────────────────
+
   async finish(): Promise<void> {
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = null;
-    }
+    if (this.disposed || this.finishing) return;
+    this.finishing = true;
+    this.clearTimer();
 
     if (Platform.OS === "web") {
-      try {
-        this.recognition?.stop();
-      } catch {
-        // ignore
-      }
+      try { this.recognition?.stop(); } catch { /* ignore */ }
+      this.finishing = false;
       return;
     }
 
@@ -223,8 +207,9 @@ export class VoiceService {
 
     if (!rec) {
       this.setStatus("error");
-      this.callbacks.onError("Recording was not started. Try again.");
-      this.callbacks.onEnd?.();
+      this.cb.onError("Recording was not started. Try again.");
+      this.cb.onEnd?.();
+      this.finishing = false;
       return;
     }
 
@@ -235,122 +220,102 @@ export class VoiceService {
       const uri = rec.getURI();
       if (!uri) {
         this.setStatus("error");
-        this.callbacks.onError("Could not access the recorded audio.");
-        this.callbacks.onEnd?.();
+        this.cb.onError("Could not access the recorded audio.");
+        this.cb.onEnd?.();
         return;
       }
 
-      const apiKey = getOpenAiApiKey();
-      if (!apiKey) {
-        this.setStatus("error");
-        this.callbacks.onError("Missing OpenAI API key. Set EXPO_PUBLIC_OPENAI_API_KEY and try again.");
-        this.callbacks.onEnd?.();
-        return;
-      }
+      const { mimeType, filename } = getMimeType(uri);
+      const text = await transcribeAudio(uri, mimeType, filename);
 
-      const { mimeType, filename } = getMimeTypeFromUri(uri);
-
-      const form = new FormData();
-      form.append("model", "whisper-1");
-      form.append("language", "en");
-      form.append("response_format", "json");
-      form.append(
-        "file",
-        {
-          uri,
-          name: filename,
-          type: mimeType,
-        } as any,
-      );
-
-      const resp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: form,
-      });
-
-      if (!resp.ok) {
-        let details = "";
-        try {
-          const errJson = await resp.json();
-          details = errJson?.error?.message ? ` (${errJson.error.message})` : "";
-        } catch {
-          // ignore
-        }
-        this.setStatus("error");
-        this.callbacks.onError(`Transcription failed${details}.`);
-        this.callbacks.onEnd?.();
-        return;
-      }
-
-      const json: any = await resp.json();
-      const text = String(json?.text ?? "").trim();
-      this.callbacks.onTranscript(text);
+      this.cb.onTranscript(text);
 
       if (!text) {
         this.setStatus("error");
-        this.callbacks.onError("No speech detected. Please try again.");
-        this.callbacks.onEnd?.();
+        this.cb.onError("No speech detected. Please try again.");
+        this.cb.onEnd?.();
         return;
       }
 
-      this.callbacks.onResult(text);
+      this.cb.onResult(text);
       setTimeout(() => {
         this.setStatus("done");
-        this.callbacks.onEnd?.();
-      }, 800);
-    } catch {
+        this.cb.onEnd?.();
+      }, 600);
+    } catch (err: any) {
       this.setStatus("error");
-      this.callbacks.onError("Could not process audio. Please try again.");
-      this.callbacks.onEnd?.();
+      const detail = err?.message && err.message !== "undefined"
+        ? err.message
+        : "Could not process audio. Please try again or type your command below.";
+      this.cb.onError(detail);
+      this.cb.onEnd?.();
+    } finally {
+      this.finishing = false;
     }
   }
 
-  /** Cancel capture and reset state (no transcription). */
+  // ── Cancel ──────────────────────────────────────────────────────────────
+
   async cancel(): Promise<void> {
+    this.finishing = false;
+    this.clearTimer();
+    try { this.recognition?.stop(); } catch { /* ignore */ }
+    await this.stopNativeRecording();
+    if (Platform.OS !== "web") {
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        });
+      } catch {
+        // ignore audio mode reset failures
+      }
+    }
+    this.cb.onTranscript("");
+    this.cb.onError("");
+    this.setStatus("idle");
+  }
+
+  // ── Dispose ─────────────────────────────────────────────────────────────
+
+  dispose(): void {
+    this.disposed = true;
+    this.clearTimer();
+    try { this.recognition?.abort(); } catch { /* ignore */ }
+    this.recognition = null;
+    void this.stopNativeRecording();
+  }
+
+  // ── Internals ───────────────────────────────────────────────────────────
+
+  private clearTimer() {
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
     }
-
-    try {
-      this.recognition?.stop();
-    } catch {
-      // ignore
-    }
-
-    await this.cancelNativeRecording();
-
-    this.callbacks.onTranscript("");
-    this.callbacks.onError("");
-    this.setStatus("idle");
   }
 
-  dispose(): void {
-    try {
-      this.recognition?.abort();
-    } catch {
-      // ignore
-    }
-    this.recognition = null;
-    void this.cancelNativeRecording();
-  }
-
-  private async cancelNativeRecording(): Promise<void> {
+  private async stopNativeRecording(): Promise<void> {
     const rec = this.recording;
     this.recording = null;
-
     if (!rec) return;
-
     try {
-      const status = await rec.getStatusAsync();
-      if (status.isRecording) {
-        await rec.stopAndUnloadAsync();
+      const s = await rec.getStatusAsync();
+      if (s.isRecording) await rec.stopAndUnloadAsync();
+    } catch { /* ignore */ }
+    if (Platform.OS !== "web") {
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        });
+      } catch {
+        // ignore audio mode reset failures
       }
-    } catch {
-      // ignore
     }
   }
 }

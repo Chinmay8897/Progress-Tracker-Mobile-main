@@ -12,6 +12,7 @@ import {
   Text,
   TextInput,
   View,
+  Modal,
 } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -21,39 +22,62 @@ import { useColors } from "@/hooks/useColors";
 export default function LoginScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { login } = useApp();
+  const { login, register } = useApp();
 
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [role, setRole] = useState<"developer" | "project_lead" | "admin_lite" | "support_agent" | "head_manager">("developer");
+  const [showRolePicker, setShowRolePicker] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      setError("Please enter email and password");
+  const roleLabels: Record<string, string> = {
+    developer: "Developer",
+    project_lead: "Project Lead",
+    admin_lite: "Admin Lite",
+    support_agent: "Support Agent",
+    head_manager: "Head Manager",
+  };
+
+  const roleOptions: { value: typeof role; label: string }[] = [
+    { value: "developer", label: "Developer" },
+    { value: "project_lead", label: "Project Lead" },
+    { value: "admin_lite", label: "Admin Lite" },
+    { value: "support_agent", label: "Support Agent" },
+    { value: "head_manager", label: "Head Manager" },
+  ];
+
+  const handleSubmit = async () => {
+    if (!email.trim() || !password.trim() || (isRegistering && !name.trim())) {
+      setError(isRegistering ? "Please enter name, email and password" : "Please enter email and password");
       return;
     }
     setLoading(true);
     setError("");
     try {
-      const success = await login(email.trim(), password.trim());
+      let success = false;
+      if (isRegistering) {
+        success = await register(name.trim(), email.trim(), password.trim(), undefined, role);
+      } else {
+        success = await login(email.trim(), password.trim());
+      }
+
       if (success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         router.replace("/(tabs)");
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        setError("Invalid email or password");
+        setError(isRegistering ? "Registration failed" : "Invalid email or password");
       }
+    } catch (err: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setError(err?.message || (isRegistering ? "Registration failed. Check your connection and try again." : "Login failed. Check your connection and try again."));
     } finally {
       setLoading(false);
     }
-  };
-
-  const fillDemo = (userEmail: string, pass: string) => {
-    setEmail(userEmail);
-    setPassword(pass);
-    setError("");
   };
 
   const styles = StyleSheet.create({
@@ -181,36 +205,42 @@ export default function LoginScreen() {
       color: colors.mutedForeground,
       fontWeight: "500",
     },
-    demoTitle: {
+    helpText: {
       fontSize: 12,
-      fontWeight: "600",
       color: colors.mutedForeground,
-      marginBottom: 10,
-      letterSpacing: 0.5,
-      textTransform: "uppercase",
+      textAlign: "center",
+      lineHeight: 18,
     },
-    demoRow: {
+    switchModeWrap: {
       flexDirection: "row",
-      gap: 8,
+      justifyContent: "center",
+      marginTop: 20,
     },
-    demoBtn: {
-      flex: 1,
-      backgroundColor: colors.card,
-      borderRadius: 10,
-      padding: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: "center",
-    },
-    demoBtnLabel: {
-      fontSize: 11,
-      fontWeight: "700",
+    switchModeText: {
       color: colors.mutedForeground,
-      marginBottom: 2,
+      fontSize: 14,
     },
-    demoBtnEmail: {
-      fontSize: 10,
-      color: colors.mutedForeground + "99",
+    switchModeLink: {
+      color: colors.primary,
+      fontWeight: "600",
+      fontSize: 14,
+      marginLeft: 4,
+    },
+    roleSelector: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.card,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      marginBottom: 16,
+      paddingHorizontal: 14,
+      paddingVertical: 14,
+    },
+    roleText: {
+      flex: 1,
+      fontSize: 15,
+      color: colors.foreground,
     },
   });
 
@@ -226,7 +256,32 @@ export default function LoginScreen() {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(150).duration(350)}>
-          <Text style={styles.formTitle}>Sign In</Text>
+          <Text style={styles.formTitle}>{isRegistering ? "Create Account" : "Sign In"}</Text>
+
+          {isRegistering && (
+            <>
+              <Text style={styles.label}>Name</Text>
+              <View style={styles.inputWrap}>
+                <Feather name="user" size={16} color={colors.mutedForeground} style={{ marginRight: 10 }} />
+                <TextInput
+                  style={styles.input}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Your Name"
+                  placeholderTextColor={colors.mutedForeground}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                />
+              </View>
+
+              <Text style={styles.label}>Role</Text>
+              <Pressable style={styles.roleSelector} onPress={() => setShowRolePicker(true)}>
+                <Feather name="briefcase" size={16} color={colors.mutedForeground} style={{ marginRight: 10 }} />
+                <Text style={styles.roleText}>{roleLabels[role]}</Text>
+                <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
+              </Pressable>
+            </>
+          )}
 
           <Text style={styles.label}>Email</Text>
           <View style={styles.inputWrap}>
@@ -267,35 +322,37 @@ export default function LoginScreen() {
             </View>
           )}
 
-          <Pressable style={styles.loginBtn} onPress={handleLogin} disabled={loading}>
+          <Pressable style={styles.loginBtn} onPress={handleSubmit} disabled={loading}>
             {loading ? (
               <ActivityIndicator color={colors.primaryForeground} />
             ) : (
-              <Text style={styles.loginBtnText}>Sign In</Text>
+              <Text style={styles.loginBtnText}>{isRegistering ? "Sign Up" : "Sign In"}</Text>
             )}
           </Pressable>
 
+          <View style={styles.switchModeWrap}>
+            <Text style={styles.switchModeText}>
+              {isRegistering ? "Already have an account?" : "Don't have an account?"}
+            </Text>
+            <Pressable onPress={() => {
+              setIsRegistering(!isRegistering);
+              setError("");
+            }}>
+              <Text style={styles.switchModeLink}>
+                {isRegistering ? "Sign In" : "Sign Up"}
+              </Text>
+            </Pressable>
+          </View>
+
           <View style={styles.divider}>
             <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>Quick Access</Text>
+            <Text style={styles.dividerText}>Secure Access</Text>
             <View style={styles.dividerLine} />
           </View>
 
-          <Text style={styles.demoTitle}>Demo Accounts</Text>
-          <View style={styles.demoRow}>
-            <Pressable style={styles.demoBtn} onPress={() => fillDemo("admin@taskcommand.io", "admin123")}>
-              <Text style={styles.demoBtnLabel}>Head Manager</Text>
-              <Text style={styles.demoBtnEmail}>admin@...</Text>
-            </Pressable>
-            <Pressable style={styles.demoBtn} onPress={() => fillDemo("jordan@taskcommand.io", "pass123")}>
-              <Text style={styles.demoBtnLabel}>Project Lead</Text>
-              <Text style={styles.demoBtnEmail}>jordan@...</Text>
-            </Pressable>
-            <Pressable style={styles.demoBtn} onPress={() => fillDemo("sam@taskcommand.io", "pass123")}>
-              <Text style={styles.demoBtnLabel}>Developer</Text>
-              <Text style={styles.demoBtnEmail}>sam@...</Text>
-            </Pressable>
-          </View>
+          <Text style={styles.helpText}>
+            Sign in with your organization account. New team members are created by a Head Manager.
+          </Text>
         </Animated.View>
       </ScrollView>
     </KeyboardAvoidingView>

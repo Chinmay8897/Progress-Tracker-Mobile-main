@@ -29,7 +29,7 @@ const BASE_ROLES: { value: Role; label: string }[] = [
 
 export default function AddMemberModal({ visible, onClose }: AddMemberModalProps) {
   const colors = useColors();
-  const { addUser, currentUser } = useApp();
+  const { addUser, currentUser, users } = useApp();
   const insets = useSafeAreaInsets();
 
   const roleOptions: { value: Role; label: string }[] =
@@ -39,13 +39,57 @@ export default function AddMemberModal({ visible, onClose }: AddMemberModalProps
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<Role>("developer");
+  const [error, setError] = useState<string | null>(null);
 
   const handleAdd = async () => {
-    if (!name.trim() || !email.trim() || !password.trim()) return;
-    await addUser({ name, email, password, role, avatarColor: "#1a6cf5" });
-    setName(""); setEmail(""); setPassword(""); setRole("developer");
+    setError(null);
+
+    if (!name.trim()) {
+      setError("Full name is required");
+      return;
+    }
+    if (!email.trim()) {
+      setError("Email is required");
+      return;
+    }
+    // Basic email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setError("Please enter a valid email address");
+      return;
+    }
+    // Check for duplicate email
+    if (users.some(u => u.email.toLowerCase() === email.trim().toLowerCase())) {
+      setError("A member with this email already exists");
+      return;
+    }
+    if (!password.trim()) {
+      setError("Password is required");
+      return;
+    }
+    if (password.trim().length < 6) {
+      setError("Password must be at least 6 characters");
+      return;
+    }
+
+    const phone = phoneNumber.trim();
+    if (phone && !/^\+[1-9]\d{7,14}$/.test(phone)) {
+      setError("Phone number must be E.164 format, for example +919876543210");
+      return;
+    }
+
+    await addUser({
+      name: name.trim(),
+      email: email.trim(),
+      password: password.trim(),
+      role,
+      avatarColor: "#1a6cf5",
+      phoneNumber: phone || undefined,
+    });
+    setName(""); setEmail(""); setPhoneNumber(""); setPassword(""); setRole("developer"); setError(null);
     onClose();
   };
 
@@ -65,6 +109,8 @@ export default function AddMemberModal({ visible, onClose }: AddMemberModalProps
     roleTextActive: { color: colors.primary },
     addBtn: { backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 14, alignItems: "center" },
     addBtnText: { fontSize: 15, fontWeight: "700", color: colors.primaryForeground },
+    errorBox: { backgroundColor: colors.critical + "10", borderWidth: 1, borderColor: colors.critical + "35", borderRadius: 10, padding: 10, marginBottom: 12, flexDirection: "row", alignItems: "center", gap: 8 },
+    errorText: { flex: 1, color: colors.critical, fontSize: 12, fontWeight: "600" },
   });
 
   return (
@@ -80,10 +126,18 @@ export default function AddMemberModal({ visible, onClose }: AddMemberModalProps
             <View style={{ width: 22 }} />
           </View>
           <ScrollView style={styles.content} keyboardShouldPersistTaps="handled">
+            {error ? (
+              <View style={styles.errorBox}>
+                <Feather name="alert-circle" size={16} color={colors.critical} />
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            ) : null}
             <Text style={styles.label}>Full Name</Text>
             <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Jane Smith" placeholderTextColor={colors.mutedForeground} />
             <Text style={styles.label}>Email</Text>
             <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="jane@company.com" placeholderTextColor={colors.mutedForeground} keyboardType="email-address" autoCapitalize="none" />
+            <Text style={styles.label}>Phone Number</Text>
+            <TextInput style={styles.input} value={phoneNumber} onChangeText={setPhoneNumber} placeholder="+919876543210" placeholderTextColor={colors.mutedForeground} keyboardType="phone-pad" autoCapitalize="none" />
             <Text style={styles.label}>Password</Text>
             <TextInput style={styles.input} value={password} onChangeText={setPassword} placeholder="Temporary password" placeholderTextColor={colors.mutedForeground} secureTextEntry />
             <Text style={styles.label}>Role</Text>

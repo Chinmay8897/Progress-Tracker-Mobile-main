@@ -1,7 +1,39 @@
+/**
+ * AppContext — Application state provider.
+ *
+ * PRODUCTION VERSION: All data flows through the backend API.
+ * - Authentication via JWT (stored in expo-secure-store)
+ * - Tasks and users fetched from backend
+ * - Optimistic UI updates with server sync
+ * - Offline action queue for mutations when offline
+ */
+
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { getJson, removeItemQueued, setJsonQueued } from "@/data/storage";
-import { moveTaskDueDateNormalized, TaskMutationError, updateTaskInList } from "@/domain/tasks/taskMutations";
-import { addDaysToDateKey, normalizeDateKey, todayDateKey } from "@/utils/date";
+import NetInfo from "@react-native-community/netinfo";
+import {
+  authApi, usersApi, tasksApi,
+  setOnUnauthorized,
+  type ApiUser, type ApiTask, ApiError,
+} from "@/services/api";
+import {
+  clearSupabaseSession,
+  getSupabaseClient,
+  setSupabaseSession,
+} from "@/services/supabase/supabaseClient";
+import {
+  getToken, setToken, clearSession,
+  getStoredUser, setStoredUser, clearStoredUser,
+  getRefreshToken, setRefreshToken,
+  type StoredUser,
+} from "@/services/auth";
+import {
+  enqueueAction, processQueue, clearQueue,
+  type QueuedAction,
+} from "@/services/offlineQueue";
+import { clearCachedAppData, getCachedAppData, setCachedAppData } from "@/services/cache";
+import { logger } from "@/utils/logger";
+
+// ─── Types (match frontend expectations) ─────────────────────────────────────
 
 export type Role = "head_manager" | "admin_lite" | "project_lead" | "developer" | "support_agent";
 export type Priority = "critical" | "high" | "medium" | "low";
@@ -12,8 +44,8 @@ export interface User {
   name: string;
   email: string;
   role: Role;
-  password: string;
   avatarColor: string;
+  phoneNumber?: string;
 }
 
 export interface Task {
@@ -31,196 +63,59 @@ export interface Task {
   createdBy: string;
 }
 
-interface AppState {
+interface AppContextType {
   currentUser: User | null;
   users: User[];
   tasks: Task[];
-}
-
-interface AppContextType extends AppState {
   login: (email: string, password: string) => Promise<boolean>;
+  register: (name: string, email: string, password: string, phoneNumber?: string, role?: string) => Promise<boolean>;
   logout: () => void;
   addTask: (task: Omit<Task, "id" | "createdAt" | "updatedAt">) => Promise<void>;
   updateTask: (taskId: string, updates: Partial<Task>) => Promise<void>;
   moveTaskToDate: (taskId: string, dateKey: string) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
-  addUser: (user: Omit<User, "id">) => Promise<void>;
+  addUser: (user: { name: string; email: string; password: string; role: Role; avatarColor?: string; phoneNumber?: string }) => Promise<void>;
   updateUser: (userId: string, updates: Partial<User>) => Promise<void>;
   deleteUser: (userId: string) => Promise<void>;
   getTasksForUser: (userId: string) => Task[];
   movePendingToNextDay: (dateStr: string) => Promise<number>;
   isHeadManager: boolean;
   loading: boolean;
+  isOnline: boolean;
+  refreshData: () => Promise<void>;
 }
 
-const STORAGE_KEYS = {
-  USERS: "taskcommand_users",
-  TASKS: "taskcommand_tasks",
-  CURRENT_USER: "taskcommand_current_user",
-};
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const AVATAR_COLORS = [
-  "#1a6cf5", "#16a34a", "#9333ea", "#dc2626", "#ea580c",
-  "#0891b2", "#ca8a04", "#be185d", "#4f46e5", "#059669",
-];
+function apiUserToUser(u: ApiUser): User {
+  return {
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    role: u.role as Role,
+    avatarColor: u.avatarColor,
+    phoneNumber: u.phoneNumber,
+  };
+}
 
-const DEFAULT_USERS: User[] = [
-  {
-    id: "user_head",
-    name: "Alex Rivera",
-    email: "admin@taskcommand.io",
-    password: "admin123",
-    role: "head_manager",
-    avatarColor: "#1a6cf5",
-  },
-  {
-    id: "user_2",
-    name: "Jordan Chen",
-    email: "jordan@taskcommand.io",
-    password: "pass123",
-    role: "project_lead",
-    avatarColor: "#16a34a",
-  },
-  {
-    id: "user_3",
-    name: "Sam Patel",
-    email: "sam@taskcommand.io",
-    password: "pass123",
-    role: "developer",
-    avatarColor: "#9333ea",
-  },
-  {
-    id: "user_4",
-    name: "Taylor Kim",
-    email: "taylor@taskcommand.io",
-    password: "pass123",
-    role: "support_agent",
-    avatarColor: "#ea580c",
-  },
-  {
-    id: "user_5",
-    name: "Morgan Lee",
-    email: "morgan@taskcommand.io",
-    password: "pass123",
-    role: "admin_lite",
-    avatarColor: "#0891b2",
-  },
-];
+function apiTaskToTask(t: ApiTask): Task {
+  return {
+    id: t.id,
+    title: t.title,
+    description: t.description,
+    assigneeId: t.assigneeId,
+    dueDate: t.dueDate,
+    priority: t.priority as Priority,
+    status: t.status as TaskStatus,
+    tags: t.tags,
+    notes: t.notes,
+    createdBy: t.createdBy,
+    createdAt: t.createdAt,
+    updatedAt: t.updatedAt,
+  };
+}
 
-const DEFAULT_TASKS: Task[] = [
-  {
-    id: "task_1",
-    title: "Critical security patch deployment",
-    description: "Deploy security patches to production servers. Coordinate with DevOps for zero-downtime rollout.",
-    assigneeId: "user_3",
-    dueDate: "2026-04-13",
-    priority: "critical",
-    status: "in_progress",
-    tags: ["security", "production"],
-    notes: "Coordinate with DevOps team",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    createdBy: "user_head",
-  },
-  {
-    id: "task_2",
-    title: "Q2 Product roadmap finalization",
-    description: "Finalize product roadmap for Q2, including feature prioritization and resource allocation.",
-    assigneeId: "user_2",
-    dueDate: "2026-04-15",
-    priority: "high",
-    status: "open",
-    tags: ["planning", "roadmap"],
-    notes: "",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    createdBy: "user_head",
-  },
-  {
-    id: "task_3",
-    title: "Customer onboarding flow redesign",
-    description: "Redesign the customer onboarding flow to improve activation rate. Focus on first 3 steps.",
-    assigneeId: "user_3",
-    dueDate: "2026-04-20",
-    priority: "medium",
-    status: "open",
-    tags: ["ux", "onboarding"],
-    notes: "Review analytics data first",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    createdBy: "user_head",
-  },
-  {
-    id: "task_4",
-    title: "Resolve payment gateway timeout",
-    description: "Investigate and fix payment gateway timeouts affecting 5% of transactions.",
-    assigneeId: "user_4",
-    dueDate: "2026-04-14",
-    priority: "critical",
-    status: "blocked",
-    tags: ["payments", "bug"],
-    notes: "Waiting on Stripe support ticket",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    createdBy: "user_head",
-  },
-  {
-    id: "task_5",
-    title: "Update API documentation",
-    description: "Update REST API documentation with latest endpoints and examples.",
-    assigneeId: "user_3",
-    dueDate: "2026-04-25",
-    priority: "low",
-    status: "open",
-    tags: ["docs", "api"],
-    notes: "",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    createdBy: "user_head",
-  },
-  {
-    id: "task_6",
-    title: "Team performance review cycle",
-    description: "Conduct Q1 performance reviews. Schedule 1:1s with all team members.",
-    assigneeId: "user_5",
-    dueDate: "2026-04-18",
-    priority: "high",
-    status: "in_progress",
-    tags: ["hr", "reviews"],
-    notes: "",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    createdBy: "user_head",
-  },
-  {
-    id: "task_7",
-    title: "Database index optimization",
-    description: "Optimize slow database queries identified in the performance audit.",
-    assigneeId: "user_3",
-    dueDate: "2026-04-22",
-    priority: "high",
-    status: "open",
-    tags: ["database", "performance"],
-    notes: "",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    createdBy: "user_head",
-  },
-  {
-    id: "task_8",
-    title: "Customer support knowledge base",
-    description: "Build out knowledge base articles for top 20 support tickets.",
-    assigneeId: "user_4",
-    dueDate: "2026-04-30",
-    priority: "medium",
-    status: "done",
-    tags: ["support", "docs"],
-    notes: "Completed initial 10 articles",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    createdBy: "user_head",
-  },
-];
+// ─── Context ─────────────────────────────────────────────────────────────────
 
 const AppContext = createContext<AppContextType | null>(null);
 
@@ -229,23 +124,71 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [users, setUsers] = useState<User[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const [hydrated, setHydrated] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
 
-  const usersRef = useRef<User[]>([]);
-  const tasksRef = useRef<Task[]>([]);
-  const currentUserRef = useRef<User | null>(null);
+  const isOnlineRef = useRef(true);
 
-  useEffect(() => {
-    usersRef.current = users;
-  }, [users]);
+  // ── Network monitoring ────────────────────────────────────────────────────
 
   useEffect(() => {
-    tasksRef.current = tasks;
-  }, [tasks]);
+    const unsubscribe = NetInfo.addEventListener(state => {
+      const online = !!(state.isConnected && state.isInternetReachable !== false);
+      isOnlineRef.current = online;
+      setIsOnline(online);
 
-  useEffect(() => {
-    currentUserRef.current = currentUser;
+      // When coming back online, sync queued actions and refresh data
+      if (online && currentUser) {
+        void syncOfflineQueue();
+        void fetchAllData();
+      }
+    });
+
+    return () => unsubscribe();
   }, [currentUser]);
+
+  // ── 401 handler ───────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    setOnUnauthorized(() => {
+      setCurrentUser(null);
+      setUsers([]);
+      setTasks([]);
+      void clearSupabaseSession();
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        void fetchAllData();
+      }, 300);
+    };
+
+    const channel = supabase
+      .channel(`taskcommand:${currentUser.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, scheduleRefresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "task_assignments" }, scheduleRefresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, scheduleRefresh)
+      .subscribe(status => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          logger.warn("Supabase", `Realtime subscription status: ${status}`);
+        }
+      });
+
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      supabase.removeChannel(channel).catch(() => undefined);
+    };
+  }, [currentUser]);
+
+  // ── Initialization ────────────────────────────────────────────────────────
 
   useEffect(() => {
     void initializeApp();
@@ -253,175 +196,383 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const initializeApp = async () => {
     try {
-      const usersList = (await getJson<User[]>(STORAGE_KEYS.USERS)) ?? DEFAULT_USERS;
-      const tasksList = (await getJson<Task[]>(STORAGE_KEYS.TASKS)) ?? DEFAULT_TASKS;
-      const storedUser = await getJson<User>(STORAGE_KEYS.CURRENT_USER);
-
-      setUsers(usersList);
-      setTasks(tasksList);
-
-      if (storedUser) {
-        const freshUser = usersList.find(u => u.id === storedUser.id);
-        if (freshUser) setCurrentUser(freshUser);
+      const token = await getToken();
+      if (!token) {
+        setLoading(false);
+        return;
       }
-    } catch (e) {
-      setUsers(DEFAULT_USERS);
-      setTasks(DEFAULT_TASKS);
+      const refreshToken = await getRefreshToken();
+      if (refreshToken) {
+        await setSupabaseSession(token, refreshToken);
+      }
+
+      // Restore cached user immediately for fast UI
+      const cached = await getStoredUser();
+      if (cached) {
+        setCurrentUser(cached as User);
+      }
+
+      const cachedData = await getCachedAppData();
+      if (cachedData) {
+        setUsers(cachedData.users);
+        setTasks(cachedData.tasks);
+      }
+
+      // Verify token is still valid
+      try {
+        const me = await authApi.me();
+        const user = apiUserToUser(me);
+        setCurrentUser(user);
+        await setStoredUser(user as StoredUser);
+
+        // Fetch all data
+        await fetchAllData();
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) {
+          await clearSession();
+          setCurrentUser(null);
+        } else {
+          // Offline — use cached user, skip data fetch
+          logger.warn("AppContext", "Could not verify session (offline?)", err);
+        }
+      }
+    } catch (err) {
+      logger.error("AppContext", "Initialization failed", err);
     } finally {
       setLoading(false);
-      setHydrated(true);
     }
   };
 
-  // Persist state changes in the background (queued + deferred)
-  useEffect(() => {
-    if (!hydrated) return;
-    void setJsonQueued(STORAGE_KEYS.USERS, users);
-  }, [users, hydrated]);
+  // ── Data fetching ─────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    if (!hydrated) return;
-    void setJsonQueued(STORAGE_KEYS.TASKS, tasks);
-  }, [tasks, hydrated]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    if (currentUser) {
-      void setJsonQueued(STORAGE_KEYS.CURRENT_USER, currentUser);
-    } else {
-      void removeItemQueued(STORAGE_KEYS.CURRENT_USER);
+  const fetchAllData = async () => {
+    try {
+      const [usersData, tasksData] = await Promise.all([
+        usersApi.list(),
+        tasksApi.list(),
+      ]);
+      const nextUsers = usersData.map(apiUserToUser);
+      const nextTasks = tasksData.map(apiTaskToTask);
+      setUsers(nextUsers);
+      setTasks(nextTasks);
+      await setCachedAppData(nextUsers, nextTasks);
+    } catch (err) {
+      logger.error("AppContext", "Failed to fetch data", err);
     }
-  }, [currentUser, hydrated]);
+  };
+
+  const refreshData = useCallback(async () => {
+    await fetchAllData();
+  }, []);
+
+  // ── Offline queue sync ────────────────────────────────────────────────────
+
+  const syncOfflineQueue = async () => {
+    await processQueue(async (action: QueuedAction) => {
+      switch (action.type) {
+        case "CREATE_TASK":
+          await tasksApi.create(action.payload as any);
+          break;
+        case "UPDATE_TASK": {
+          const { id, ...data } = action.payload as any;
+          await tasksApi.update(id, data);
+          break;
+        }
+        case "DELETE_TASK":
+          await tasksApi.delete(action.payload as string);
+          break;
+        case "CREATE_USER":
+          await usersApi.create(action.payload as any);
+          break;
+        case "UPDATE_USER": {
+          const { id, ...data } = action.payload as any;
+          await usersApi.update(id, data);
+          break;
+        }
+        case "DELETE_USER":
+          await usersApi.delete(action.payload as string);
+          break;
+        case "MOVE_PENDING":
+          await tasksApi.movePending(action.payload as string);
+          break;
+      }
+    });
+    // Refresh data after sync
+    await fetchAllData();
+  };
+
+  // ── Auth ──────────────────────────────────────────────────────────────────
 
   const login = useCallback(async (email: string, password: string): Promise<boolean> => {
-    const user = usersRef.current.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
-    if (user) {
+    try {
+      const response = await authApi.login(email, password);
+      await setToken(response.token);
+      await setRefreshToken(response.refreshToken);
+      await setSupabaseSession(response.token, response.refreshToken);
+
+      const user = apiUserToUser(response.user);
+      await setStoredUser(user as StoredUser);
       setCurrentUser(user);
+
+      // Fetch data after login
+      await fetchAllData();
+
       return true;
+    } catch (err) {
+      if (err instanceof ApiError) {
+        logger.warn("AppContext", `Login failed: ${err.message}`);
+        // Rethrow so UI can handle specific errors if needed, or throw generic error
+        throw new Error(err.message || "Invalid email or password");
+      }
+      throw err;
     }
-    return false;
+  }, []);
+
+  const register = useCallback(async (name: string, email: string, password: string, phoneNumber?: string, role?: string): Promise<boolean> => {
+    try {
+      const response = await authApi.register(name, email, password, phoneNumber, role);
+      await setToken(response.token);
+      await setRefreshToken(response.refreshToken);
+      await setSupabaseSession(response.token, response.refreshToken);
+
+      const user = apiUserToUser(response.user);
+      await setStoredUser(user as StoredUser);
+      setCurrentUser(user);
+
+      // Fetch data after registration
+      await fetchAllData();
+
+      return true;
+    } catch (err) {
+      if (err instanceof ApiError) {
+        logger.warn("AppContext", `Registration failed: ${err.message}`);
+        // Combine field errors if present
+        let errorMsg = err.message || "Registration failed";
+        if (err.details) {
+            const detailsList = Object.values(err.details).flat();
+            if (detailsList.length > 0) {
+                errorMsg = detailsList[0]; // Just take the first validation error
+            }
+        }
+        throw new Error(errorMsg);
+      }
+      throw err;
+    }
   }, []);
 
   const logout = useCallback(() => {
-    setCurrentUser(null);
+    void (async () => {
+      try {
+        // Revoke tokens server-side first (best-effort).
+        await authApi.logout();
+      } catch (err) {
+        logger.warn("AppContext", "Server logout failed; continuing with local session cleanup", err);
+      }
+      try {
+        await clearSession();
+        await clearSupabaseSession();
+        await clearQueue();
+        await clearCachedAppData();
+      } catch (err) {
+        logger.warn("AppContext", "Local logout cleanup encountered an error", err);
+      } finally {
+        setCurrentUser(null);
+        setUsers([]);
+        setTasks([]);
+      }
+    })();
   }, []);
 
+  // ── Task CRUD (with optimistic updates + offline queue) ───────────────────
+
   const addTask = useCallback(async (taskData: Omit<Task, "id" | "createdAt" | "updatedAt">) => {
-    const cu = currentUserRef.current;
-    if (!cu) {
-      throw new Error("You must be logged in to create tasks.");
+    if (!taskData.assigneeId) {
+      throw new Error("Task assignee is required before creating a task.");
+    }
+    if (!taskData.title.trim()) {
+      throw new Error("Task title is required.");
     }
 
-    const isHeadManager = cu.role === "head_manager";
+    // Optimistic: add immediately with temp ID
+    const tempId = `temp_${Date.now()}`;
     const nowIso = new Date().toISOString();
-
-    const newTask: Task = {
+    const optimistic: Task = {
       ...taskData,
-      // All users can create tasks, but only head manager can assign to others.
-      assigneeId: isHeadManager ? taskData.assigneeId : cu.id,
-      createdBy: cu.id,
-      id: `task_${Date.now()}${Math.random().toString(36).substr(2, 5)}`,
+      id: tempId,
       createdAt: nowIso,
       updatedAt: nowIso,
     };
-    setTasks(prev => [...prev, newTask]);
+    setTasks(prev => [...prev, optimistic]);
+
+    try {
+      if (!isOnlineRef.current) {
+        await enqueueAction("CREATE_TASK", taskData);
+        return;
+      }
+
+      const created = await tasksApi.create({
+        title: taskData.title,
+        description: taskData.description,
+        assigneeId: taskData.assigneeId,
+        dueDate: taskData.dueDate,
+        priority: taskData.priority,
+        status: taskData.status,
+        tags: taskData.tags,
+        notes: taskData.notes,
+      });
+
+      // Replace optimistic entry with real server response
+      setTasks(prev => {
+        const normalized = apiTaskToTask(created);
+        const withoutTemp = prev.filter(t => t.id !== tempId);
+        const alreadyExists = withoutTemp.some(t => t.id === normalized.id);
+        return alreadyExists ? withoutTemp : [...withoutTemp, normalized];
+      });
+    } catch (err) {
+      // Revert optimistic update on failure
+      setTasks(prev => prev.filter(t => t.id !== tempId));
+      throw err;
+    }
   }, []);
 
   const updateTask = useCallback(async (taskId: string, updates: Partial<Task>) => {
-    const nowIso = new Date().toISOString();
-    setTasks(prev => updateTaskInList(prev, taskId, updates, nowIso));
+    // Optimistic update
+    setTasks(prev => prev.map(t =>
+      t.id === taskId ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t
+    ));
+
+    try {
+      if (!isOnlineRef.current) {
+        await enqueueAction("UPDATE_TASK", { id: taskId, ...updates });
+        return;
+      }
+
+      const updated = await tasksApi.update(taskId, updates);
+      setTasks(prev => prev.map(t => t.id === taskId ? apiTaskToTask(updated) : t));
+    } catch (err) {
+      // Refresh on failure to get true state
+      await fetchAllData();
+      throw err;
+    }
   }, []);
 
   const moveTaskToDate = useCallback(async (taskId: string, dateKey: string) => {
-    const normalized = normalizeDateKey(dateKey);
-    if (!normalized) throw new TaskMutationError("Invalid date. Expected YYYY-MM-DD");
-    const todayKey = todayDateKey();
-    if (normalized < todayKey) throw new TaskMutationError("Past dates are not allowed");
-
-    const nowIso = new Date().toISOString();
-    setTasks(prev => moveTaskDueDateNormalized(prev, taskId, normalized, nowIso));
-  }, []);
+    await updateTask(taskId, { dueDate: dateKey });
+  }, [updateTask]);
 
   const deleteTask = useCallback(async (taskId: string) => {
-    setTasks(prev => {
-      const idx = prev.findIndex(t => t.id === taskId);
-      if (idx === -1) return prev;
-      const next = prev.slice();
-      next.splice(idx, 1);
-      return next;
-    });
-  }, []);
+    // Optimistic removal
+    const prev = tasks;
+    setTasks(t => t.filter(task => task.id !== taskId));
 
-  const addUser = useCallback(async (userData: Omit<User, "id">) => {
-    const newUser: User = {
-      ...userData,
-      id: `user_${Date.now()}${Math.random().toString(36).substr(2, 5)}`,
-      avatarColor: AVATAR_COLORS[usersRef.current.length % AVATAR_COLORS.length],
-    };
-    setUsers(prev => [...prev, newUser]);
+    try {
+      if (!isOnlineRef.current) {
+        await enqueueAction("DELETE_TASK", taskId);
+        return;
+      }
+
+      await tasksApi.delete(taskId);
+    } catch (err) {
+      // Revert on failure
+      setTasks(prev);
+      throw err;
+    }
+  }, [tasks]);
+
+  // ── User CRUD ─────────────────────────────────────────────────────────────
+
+  const addUser = useCallback(async (userData: { name: string; email: string; password: string; role: Role; avatarColor?: string; phoneNumber?: string }) => {
+    try {
+      if (!isOnlineRef.current) {
+        await enqueueAction("CREATE_USER", userData);
+        return;
+      }
+
+      const created = await usersApi.create({
+        name: userData.name,
+        email: userData.email,
+        password: userData.password,
+        role: userData.role,
+        avatarColor: userData.avatarColor,
+        phoneNumber: userData.phoneNumber,
+      });
+      setUsers(prev => [...prev, apiUserToUser(created)]);
+    } catch (err) {
+      throw err;
+    }
   }, []);
 
   const updateUser = useCallback(async (userId: string, updates: Partial<User>) => {
-    const source = usersRef.current;
-    const idx = source.findIndex(u => u.id === userId);
-    if (idx === -1) return;
+    // Optimistic
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...updates } : u));
 
-    const nextUser = { ...source[idx], ...updates };
-    const nextUsers = source.slice();
-    nextUsers[idx] = nextUser;
-    setUsers(nextUsers);
+    try {
+      if (!isOnlineRef.current) {
+        await enqueueAction("UPDATE_USER", { id: userId, ...updates });
+        return;
+      }
 
-    if (currentUserRef.current?.id === userId) {
-      setCurrentUser(nextUser);
+      const updated = await usersApi.update(userId, updates);
+      setUsers(prev => prev.map(u => u.id === userId ? apiUserToUser(updated) : u));
+
+      if (currentUser?.id === userId) {
+        setCurrentUser(apiUserToUser(updated));
+      }
+    } catch (err) {
+      await fetchAllData();
+      throw err;
     }
-  }, []);
+  }, [currentUser]);
 
   const deleteUser = useCallback(async (userId: string) => {
-    setUsers(prev => {
-      const idx = prev.findIndex(u => u.id === userId);
-      if (idx === -1) return prev;
-      const next = prev.slice();
-      next.splice(idx, 1);
-      return next;
-    });
-    if (currentUserRef.current?.id === userId) {
-      setCurrentUser(null);
+    const prevUsers = users;
+    setUsers(prev => prev.filter(u => u.id !== userId));
+
+    try {
+      if (!isOnlineRef.current) {
+        await enqueueAction("DELETE_USER", userId);
+        return;
+      }
+
+      await usersApi.delete(userId);
+
+      if (currentUser?.id === userId) {
+        logout();
+      }
+    } catch (err) {
+      setUsers(prevUsers);
+      throw err;
+    }
+  }, [currentUser, users, logout]);
+
+  const getTasksForUser = useCallback((userId: string) => {
+    return tasks.filter(t => t.assigneeId === userId);
+  }, [tasks]);
+
+  const movePendingToNextDay = useCallback(async (dateStr: string): Promise<number> => {
+    try {
+      if (!isOnlineRef.current) {
+        await enqueueAction("MOVE_PENDING", dateStr);
+        return 0;
+      }
+
+      const result = await tasksApi.movePending(dateStr);
+      await fetchAllData(); // Refresh to get updated tasks
+      return result.moved;
+    } catch (err) {
+      logger.error("AppContext", "Failed to move pending tasks", err);
+      return 0;
     }
   }, []);
 
-  const getTasksForUser = useCallback((userId: string) => {
-    return tasksRef.current.filter(t => t.assigneeId === userId);
-  }, []);
-
-  const movePendingToNextDay = useCallback(async (dateStr: string): Promise<number> => {
-    const dateKey = normalizeDateKey(dateStr);
-    if (!dateKey) return 0;
-
-    const source = tasksRef.current;
-    const pending = source.filter(t => {
-      const taskDate = normalizeDateKey(t.dueDate) ?? t.dueDate.slice(0, 10);
-      return taskDate === dateKey && t.status !== "done" && t.status !== "cancelled";
-    });
-    if (pending.length === 0) return 0;
-
-    const now = new Date().toISOString();
-    const pendingIds = new Set(pending.map(p => p.id));
-    const updated = source.map(t => {
-      if (pendingIds.has(t.id)) {
-        const nextKey = addDaysToDateKey(t.dueDate, 1) ?? dateKey;
-        return { ...t, dueDate: nextKey, updatedAt: now };
-      }
-      return t;
-    });
-    setTasks(updated);
-    return pending.length;
-  }, []);
+  // ── Context Value ─────────────────────────────────────────────────────────
 
   const ctxValue = useMemo<AppContextType>(() => ({
     currentUser,
     users,
     tasks,
     login,
+    register,
     logout,
     addTask,
     updateTask,
@@ -432,24 +583,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     deleteUser,
     getTasksForUser,
     movePendingToNextDay,
-    isHeadManager: currentUser?.role === "head_manager",
+    isHeadManager: (currentUser?.role as Role) === "head_manager",
     loading,
+    isOnline,
+    refreshData,
   }), [
-    currentUser,
-    users,
-    tasks,
-    login,
-    logout,
-    addTask,
-    updateTask,
-    moveTaskToDate,
-    deleteTask,
-    addUser,
-    updateUser,
-    deleteUser,
-    getTasksForUser,
-    movePendingToNextDay,
-    loading,
+    currentUser, users, tasks,
+    login, register, logout,
+    addTask, updateTask, moveTaskToDate, deleteTask,
+    addUser, updateUser, deleteUser,
+    getTasksForUser, movePendingToNextDay,
+    loading, isOnline, refreshData,
   ]);
 
   return (

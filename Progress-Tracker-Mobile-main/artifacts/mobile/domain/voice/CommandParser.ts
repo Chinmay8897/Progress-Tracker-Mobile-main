@@ -1,100 +1,82 @@
-import { Priority, TaskStatus } from "@/context/AppContext";
-import { DateKey } from "@/utils/date";
-import { findDeadlineInText } from "@/domain/voice/DateParser";
+/**
+ * CommandParser — Intent detection and entity extraction.
+ *
+ * Parses natural language text into a structured ParsedCommand.
+ *
+ * Supported intents:
+ * - create_task  — "Create a task for Rahul to finish report by Friday"
+ * - update_task  — "Mark testing task as completed"
+ * - move_task    — "Move report task to May 20"
+ * - send_whatsapp — "Send pending tasks to Rahul on WhatsApp"
+ * - open_form    — "new task" / "create task" (bare, no details)
+ * - set_filter   — "show critical" / "show done"
+ * - clear_filters — "show all" / "clear filters"
+ */
 
-export interface ParsedTaskCommand {
-  rawText: string;
-  title?: string;
-  assigneeName?: string;
-  deadline?: DateKey;
-  priority?: Priority;
-  sendWhatsApp: boolean;
+import type { Priority, TaskStatus } from "@/context/AppContext";
+import type { ParsedCommand, ParsedEntities, ParserContext } from "./types";
+import { findDeadlineInText } from "./DateParser";
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-export type ParsedVoiceCommand =
-  | { kind: "clear_filters"; rawText: string }
-  | { kind: "set_priority_filter"; rawText: string; priority: Priority | "all" }
-  | { kind: "set_status_filter"; rawText: string; status: TaskStatus | "all" }
-  | { kind: "open_task_form"; rawText: string }
-  | { kind: "create_task"; rawText: string; command: ParsedTaskCommand }
-  | { kind: "unknown"; rawText: string };
-
-export interface ParseVoiceCommandContext {
-  now?: Date;
-  /** Known user names to help extract assignee from free-form text. */
-  knownUsers?: Array<{ name: string }>;
+function capitalize(s: string): string {
+  const v = s.trim();
+  return v ? v[0].toUpperCase() + v.slice(1) : v;
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+// ─── Entity Extractors ─────────────────────────────────────────────────────
 
-function capitalizeFirst(value: string): string {
-  const v = value.trim();
-  if (!v) return v;
-  return v[0].toUpperCase() + v.slice(1);
-}
-
-function parseSendWhatsApp(lower: string): boolean {
-  // Examples:
-  // - "send it on WhatsApp"
-  // - "notify via WhatsApp"
-  // - "send on whatsapp"
-  const hasWhatsApp = /\bwhats\s*app\b|\bwhatsapp\b/.test(lower);
-  if (!hasWhatsApp) return false;
-
-  const explicit =
-    /\b(send|notify|share|message|text)\b/.test(lower) ||
-    /\b(?:on|via)\s+(?:whats\s*app|whatsapp)\b/.test(lower);
-  return explicit;
-}
-
-function parsePriority(lower: string): Priority | undefined {
-  if (/\bcritical\b/.test(lower)) return "critical";
-  if (/\burgent\b/.test(lower)) return "high";
-
-  if (/\bhigh\s*[- ]?priority\b/.test(lower)) return "high";
-  if (/\bmedium\s*[- ]?priority\b/.test(lower)) return "medium";
-  if (/\blow\s*[- ]?priority\b/.test(lower)) return "low";
-
-  // Slightly looser matches.
-  if (/\bwith\s+high\b/.test(lower) && /\bpriority\b/.test(lower)) return "high";
-  if (/\bwith\s+medium\b/.test(lower) && /\bpriority\b/.test(lower)) return "medium";
-  if (/\bwith\s+low\b/.test(lower) && /\bpriority\b/.test(lower)) return "low";
-
+export function extractPriority(text: string): Priority | undefined {
+  const l = text.toLowerCase();
+  if (/\bcritical\b/.test(l)) return "critical";
+  if (/\burgent\b/.test(l)) return "high";
+  if (/\bhigh\s*[- ]?priority\b/.test(l) || (/\bwith\s+high\b/.test(l) && /\bpriority\b/.test(l))) return "high";
+  if (/\bmedium\s*[- ]?priority\b/.test(l) || (/\bwith\s+medium\b/.test(l) && /\bpriority\b/.test(l))) return "medium";
+  if (/\blow\s*[- ]?priority\b/.test(l) || (/\bwith\s+low\b/.test(l) && /\bpriority\b/.test(l))) return "low";
   return undefined;
 }
 
-function findAssigneeByPatterns(rawText: string): string | undefined {
-  // Prefer explicit patterns: "for Rahul" / "assign to Rahul"
-  // Avoid swallowing "to complete" by using a lookahead boundary.
-  const m = rawText.match(
-    /\b(?:for|assign(?:\s+it)?\s+to|assigned\s+to)\s+([a-zA-Z]+(?:\s+[a-zA-Z]+){0,2})(?=\s+(?:to|by|due|on|before|with|and|send|notify|share|$))/i,
-  );
-  if (!m) return undefined;
-  return m[1].trim();
+export function extractStatus(text: string): TaskStatus | undefined {
+  const l = text.toLowerCase();
+  if (/\b(?:completed?|done|finished)\b/.test(l)) return "done";
+  if (/\bin[\s_-]?progress\b/.test(l) || /\bactive\b/.test(l) || /\bstarted\b/.test(l)) return "in_progress";
+  if (/\bblocked\b/.test(l)) return "blocked";
+  if (/\bopen\b/.test(l) || /\bnot\s+started\b/.test(l)) return "open";
+  if (/\bcancell?ed\b/.test(l)) return "cancelled";
+  return undefined;
 }
 
-function findAssigneeFromKnownUsers(lower: string, knownUsers: Array<{ name: string }>): string | undefined {
-  // Score by longest match so "Rahul Sharma" wins over "Rahul".
+export function detectWhatsApp(text: string): boolean {
+  const l = text.toLowerCase();
+  if (!/\bwhats\s*app\b/.test(l)) return false;
+  return /\b(send|notify|share|message|text)\b/.test(l) || /\b(?:on|via)\s+whats\s*app\b/.test(l);
+}
+
+export function extractAssigneeByPattern(text: string): string | undefined {
+  const m = text.match(
+    /\b(?:for|assign(?:\s+it)?\s+to|assigned\s+to)\s+([a-zA-Z]+(?:\s+[a-zA-Z]+){0,2})(?=\s+(?:to|by|due|on|before|with|and|send|notify|share|$))/i,
+  );
+  return m?.[1]?.trim();
+}
+
+export function extractAssigneeFromKnownUsers(text: string, users: Array<{ name: string }>): string | undefined {
+  const lower = text.toLowerCase();
   let best: { name: string; score: number } | null = null;
 
-  for (const u of knownUsers) {
+  for (const u of users) {
     const full = u.name.trim();
     if (!full) continue;
 
-    const variants = new Set<string>();
-    variants.add(full.toLowerCase());
-    variants.add(full.split(/\s+/)[0]?.toLowerCase() ?? "");
+    const variants = [full.toLowerCase(), full.split(/\s+/)[0]?.toLowerCase() ?? ""].filter(Boolean);
 
     for (const v of variants) {
-      if (!v) continue;
-      const re = new RegExp(`\\b${escapeRegExp(v)}\\b`, "i");
-      if (!re.test(lower)) continue;
-
-      const score = v.length;
-      if (!best || score > best.score) {
-        best = { name: full, score };
+      if (!new RegExp(`\\b${escapeRe(v)}\\b`, "i").test(lower)) continue;
+      if (!best || v.length > best.score) {
+        best = { name: full, score: v.length };
       }
     }
   }
@@ -102,154 +84,192 @@ function findAssigneeFromKnownUsers(lower: string, knownUsers: Array<{ name: str
   return best?.name;
 }
 
-function extractTitleCandidate(rawText: string, assigneeName?: string, deadlineSourceText?: string): string | undefined {
-  // 1) "... for Rahul to <title> by ..."
-  const forTo = rawText.match(/\bfor\s+[a-zA-Z]+(?:\s+[a-zA-Z]+){0,2}\s+to\s+(.+?)(?=\s+(?:by|due|on|before|with|and|send|notify|share|via)\b|$)/i);
+function extractTaskTitle(
+  raw: string,
+  assignee?: string,
+  deadlineSource?: string,
+): string | undefined {
+  // Pattern 1: "for Rahul to <title> by ..."
+  const forTo = raw.match(
+    /\bfor\s+[a-zA-Z]+(?:\s+[a-zA-Z]+){0,2}\s+to\s+(.+?)(?=\s+(?:by|due|on|before|with|and|send|notify|share|via)\b|$)/i,
+  );
   if (forTo?.[1]) return forTo[1].trim();
 
-  // 2) "... task to <title> ..."
-  const taskTo = rawText.match(/\btask\s+to\s+(.+?)(?=\s+(?:by|due|on|before|with|and|send|notify|share|via)\b|$)/i);
+  // Pattern 2: "task to <title> ..."
+  const taskTo = raw.match(
+    /\btask\s+to\s+(.+?)(?=\s+(?:by|due|on|before|with|and|send|notify|share|via)\b|$)/i,
+  );
   if (taskTo?.[1]) return taskTo[1].trim();
 
-  // 3) "assign ... <title> ..." (optionally "assign to Rahul <title>")
-  const assign = rawText.match(/\bassign(?:\s+it)?(?:\s+to\s+[a-zA-Z]+(?:\s+[a-zA-Z]+){0,2})?\s+(.+?)(?=\s+(?:by|due|on|before|with|and|send|notify|share|via)\b|$)/i);
+  // Pattern 3: "assign ... <title>"
+  const assign = raw.match(
+    /\bassign(?:\s+it)?(?:\s+to\s+[a-zA-Z]+(?:\s+[a-zA-Z]+){0,2})?\s+(.+?)(?=\s+(?:by|due|on|before|with|and|send|notify|share|via)\b|$)/i,
+  );
   if (assign?.[1]) return assign[1].trim();
 
-  // 4) Fallback: remove known segments and use what's left.
-  let cleaned = rawText;
+  // Fallback: remove known segments and use what's left
+  let cleaned = raw;
+  cleaned = cleaned.replace(/^\s*(please\s+)?(add|create|new|make)\s+(a\s+)?task\b\s*[:\-–,]?\s*/i, "");
 
-  cleaned = cleaned.replace(/^\s*(please\s+)?(add|create|new)\s+(a\s+)?task\b\s*[:\-–,]?\s*/i, "");
-
-  if (assigneeName) {
+  if (assignee) {
     const nameRe = new RegExp(
-      `\\b(?:for|assign(?:\\s+it)?\\s+to|assigned\\s+to)\\s+${escapeRegExp(assigneeName)}\\b`,
+      `\\b(?:for|assign(?:\\s+it)?\\s+to|assigned\\s+to)\\s+${escapeRe(assignee.split(/\s+/)[0])}\\b`,
       "i",
     );
     cleaned = cleaned.replace(nameRe, " ");
-
-    const first = assigneeName.split(/\s+/)[0];
-    if (first && first.toLowerCase() !== assigneeName.toLowerCase()) {
-      const firstRe = new RegExp(
-        `\\b(?:for|assign(?:\\s+it)?\\s+to|assigned\\s+to)\\s+${escapeRegExp(first)}\\b`,
-        "i",
-      );
-      cleaned = cleaned.replace(firstRe, " ");
-    }
   }
 
-  if (deadlineSourceText) {
-    const dlRe = new RegExp(escapeRegExp(deadlineSourceText), "i");
-    cleaned = cleaned.replace(dlRe, " ");
+  if (deadlineSource) {
+    cleaned = cleaned.replace(new RegExp(escapeRe(deadlineSource), "i"), " ");
   }
 
-  // Remove priority phrases.
   cleaned = cleaned.replace(/\b(with\s+)?(critical|urgent|high|medium|low)\s*[- ]?priority\b/gi, " ");
-
-  // Remove WhatsApp phrases.
-  cleaned = cleaned.replace(/\b(send|notify|share)\b[^.]*?\b(?:whats\s*app|whatsapp)\b/gi, " ");
-
-  // Remove connecting words that often remain.
+  cleaned = cleaned.replace(/\b(send|notify|share)\b[^.]*?\bwhats\s*app\b/gi, " ");
   cleaned = cleaned.replace(/\b(?:and|then|please|it)\b/gi, " ");
-  cleaned = cleaned.replace(/\s+/g, " ").trim();
-  cleaned = cleaned.replace(/^\s*to\s+/i, "");
+  cleaned = cleaned.replace(/\s+/g, " ").trim().replace(/^\s*to\s+/i, "");
 
-  return cleaned.trim() || undefined;
+  return cleaned || undefined;
 }
 
-export function parseTaskCommand(text: string, ctx: ParseVoiceCommandContext = {}): ParsedTaskCommand | null {
-  const rawText = text.trim();
-  if (!rawText) return null;
+/** Extract task-title for update/move commands: "mark <title> as ..." / "move <title> to ..." */
+function extractTargetTaskTitle(raw: string): string | undefined {
+  // "mark <title> as ..."
+  const mark = raw.match(/\b(?:mark|set|change)\s+(.+?)\s+(?:as|to)\s+/i);
+  if (mark?.[1]) return mark[1].replace(/\b(the\s+)?task\b/gi, "").trim();
 
-  const now = ctx.now ?? new Date();
+  // "move/reschedule <title> to ..."
+  const move = raw.match(/\b(?:move|reschedule|shift|push)\s+(.+?)\s+(?:to|by)\s+/i);
+  if (move?.[1]) return move[1].replace(/\b(the\s+)?task\b/gi, "").trim();
+
+  return undefined;
+}
+
+// ─── Intent Detection ───────────────────────────────────────────────────────
+
+function detectIntent(lower: string): string {
+  // Update task
+  if (/\b(mark|set|change)\b/.test(lower) && /\b(as|to)\s+(completed?|done|finished|in[\s_-]?progress|blocked|open|cancel)/i.test(lower)) {
+    return "update_task";
+  }
+
+  // Move task
+  if (/\b(move|reschedule|shift|push)\b/.test(lower) && /\b(to|by)\b/.test(lower)) {
+    return "move_task";
+  }
+
+  // WhatsApp standalone (not attached to task creation)
+  const hasWhatsApp = /\bwhats\s*app\b/.test(lower);
+  const hasTaskCreate = /\b(add|create|new|make)\b/.test(lower) && /\btask\b/.test(lower);
+  if (hasWhatsApp && !hasTaskCreate && /\b(send|notify|share|message)\b/.test(lower)) {
+    return "send_whatsapp";
+  }
+
+  // Create/assign task
+  const hasTask = /\btask\b/.test(lower);
+  const hasCreate = /\b(add|create|new|make)\b/.test(lower);
+  const hasAssign = /\bassign\b/.test(lower);
+  if ((hasTask && (hasCreate || hasAssign)) || (hasAssign && /\bto\b/.test(lower))) {
+    return "create_task";
+  }
+
+  // Bare "new task"
+  if (/\b(new task|create task|add task|create a task)\b/.test(lower)) {
+    return "open_form";
+  }
+
+  // Filters
+  if (/\b(show all|clear|reset|all filters)\b/.test(lower)) return "clear_filters";
+  if (/\bshow\b/.test(lower) || /\bfilter\b/.test(lower)) return "set_filter";
+
+  return "unknown";
+}
+
+// ─── Main Parser ────────────────────────────────────────────────────────────
+
+export function parseCommand(text: string, ctx: ParserContext = {}): ParsedCommand {
+  const rawText = text.trim();
+  if (!rawText) return { intent: "unknown", rawText, entities: { sendWhatsApp: false } };
+
   const lower = rawText.toLowerCase();
+  const now = ctx.now ?? new Date();
+  const intentRaw = detectIntent(lower);
+
+  // Bare "new task" → open form
+  if (intentRaw === "create_task" && /^\s*(new|create|add)\s+(a\s+)?task\s*$/i.test(rawText)) {
+    return { intent: "open_form", rawText, entities: { sendWhatsApp: false } };
+  }
 
   const deadlineResult = findDeadlineInText(rawText, now);
   const deadline = deadlineResult?.dateKey;
+  const priority = extractPriority(rawText);
+  const status = extractStatus(rawText);
+  const sendWhatsApp = detectWhatsApp(rawText);
 
-  const sendWhatsApp = parseSendWhatsApp(lower);
-  const priority = parsePriority(lower);
+  // Resolve assignee
+  const patternAssignee = extractAssigneeByPattern(rawText);
+  const assigneeName = patternAssignee
+    ?? (ctx.knownUsers ? extractAssigneeFromKnownUsers(lower, ctx.knownUsers) : undefined);
 
-  const assigneeFromPattern = findAssigneeByPatterns(rawText);
-  const assigneeName = assigneeFromPattern
-    ? assigneeFromPattern
-    : (ctx.knownUsers ? findAssigneeFromKnownUsers(lower, ctx.knownUsers) : undefined);
-
-  const titleCandidate = extractTitleCandidate(rawText, assigneeName, deadlineResult?.sourceText);
-  const title = titleCandidate ? capitalizeFirst(titleCandidate) : undefined;
-
-  return {
-    rawText,
-    title,
+  // Build entities
+  const entities: ParsedEntities = {
     assigneeName,
     deadline,
     priority,
+    status,
     sendWhatsApp,
   };
-}
 
-export function parseVoiceCommand(text: string, ctx: ParseVoiceCommandContext = {}): ParsedVoiceCommand {
-  const rawText = text.trim();
-  if (!rawText) return { kind: "unknown", rawText };
+  switch (intentRaw) {
+    case "create_task": {
+      const title = extractTaskTitle(rawText, assigneeName, deadlineResult?.sourceText);
+      entities.taskTitle = title ? capitalize(title) : undefined;
+      return { intent: "create_task", rawText, entities };
+    }
 
-  const lower = rawText.toLowerCase();
+    case "update_task": {
+      entities.taskTitle = extractTargetTaskTitle(rawText);
+      return { intent: "update_task", rawText, entities };
+    }
 
-  // Create/assign task intent.
-  const hasTaskKeyword = /\btask\b/.test(lower);
-  const hasCreateVerb = /\b(add|create|new)\b/.test(lower);
-  const hasAssignVerb = /\bassign\b/.test(lower);
+    case "move_task": {
+      entities.taskTitle = extractTargetTaskTitle(rawText);
+      return { intent: "move_task", rawText, entities };
+    }
 
-  const likelyCreateTask = (hasTaskKeyword && (hasCreateVerb || hasAssignVerb)) || (hasAssignVerb && /\bto\b/.test(lower));
+    case "send_whatsapp":
+      return { intent: "send_whatsapp", rawText, entities };
 
-  if (likelyCreateTask) {
-    const task = parseTaskCommand(rawText, ctx);
+    case "open_form":
+      return { intent: "open_form", rawText, entities };
 
-    // If it's literally "new task" / "create task" with no details, open the form.
-    const looksBare = /^\s*(new|create|add)\s+(a\s+)?task\s*$/i.test(rawText);
-    if (looksBare) return { kind: "open_task_form", rawText };
+    case "clear_filters":
+      return { intent: "clear_filters", rawText, entities };
 
-    if (task) return { kind: "create_task", rawText, command: task };
-  }
+    case "set_filter": {
+      // Determine which filter
+      if (/\bcritical\b/.test(lower)) {
+        entities.filterType = "priority"; entities.filterValue = "critical";
+      } else if (/\bhigh\b/.test(lower)) {
+        entities.filterType = "priority"; entities.filterValue = "high";
+      } else if (/\bmedium\b/.test(lower)) {
+        entities.filterType = "priority"; entities.filterValue = "medium";
+      } else if (/\blow\b/.test(lower)) {
+        entities.filterType = "priority"; entities.filterValue = "low";
+      } else if (/\bin[\s_-]?progress\b/.test(lower) || /\bactive\b/.test(lower)) {
+        entities.filterType = "status"; entities.filterValue = "in_progress";
+      } else if (/\bblocked\b/.test(lower)) {
+        entities.filterType = "status"; entities.filterValue = "blocked";
+      } else if (/\b(done|completed?|finished)\b/.test(lower)) {
+        entities.filterType = "status"; entities.filterValue = "done";
+      } else if (/\bopen\b/.test(lower)) {
+        entities.filterType = "status"; entities.filterValue = "open";
+      } else if (/\bcancell?ed\b/.test(lower)) {
+        entities.filterType = "status"; entities.filterValue = "cancelled";
+      }
+      return { intent: "set_filter", rawText, entities };
+    }
 
-  // Open task form (dashboard shortcut)
-  if (/\b(new task|create task|add task|create a task)\b/.test(lower)) {
-    return { kind: "open_task_form", rawText };
+    default:
+      return { intent: "unknown", rawText, entities };
   }
-
-  // Clear filters.
-  if (lower.includes("show all") || lower.includes("clear") || lower.includes("reset") || lower.includes("all filters")) {
-    return { kind: "clear_filters", rawText };
-  }
-
-  // Priority filters.
-  if (lower.includes("critical")) {
-    return { kind: "set_priority_filter", rawText, priority: "critical" };
-  }
-  if (lower.includes("high")) {
-    return { kind: "set_priority_filter", rawText, priority: "high" };
-  }
-  if (lower.includes("medium")) {
-    return { kind: "set_priority_filter", rawText, priority: "medium" };
-  }
-  if (lower.includes("low")) {
-    return { kind: "set_priority_filter", rawText, priority: "low" };
-  }
-
-  // Status filters.
-  if (lower.includes("in progress") || lower.includes("in-progress") || lower.includes("active")) {
-    return { kind: "set_status_filter", rawText, status: "in_progress" };
-  }
-  if (lower.includes("blocked")) {
-    return { kind: "set_status_filter", rawText, status: "blocked" };
-  }
-  if (lower.includes("done") || lower.includes("complete") || lower.includes("finished")) {
-    return { kind: "set_status_filter", rawText, status: "done" };
-  }
-  if (lower.includes("open")) {
-    return { kind: "set_status_filter", rawText, status: "open" };
-  }
-  if (lower.includes("cancel")) {
-    return { kind: "set_status_filter", rawText, status: "cancelled" };
-  }
-
-  return { kind: "unknown", rawText };
 }

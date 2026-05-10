@@ -1,195 +1,142 @@
-# Progress Tracker (Mobile)
+# TaskCommand Mobile
 
-A mobile-first progress tracker built with **Expo (React Native)**. It includes task + team management screens, a calendar view, and optional API/server-side pieces in the same monorepo.
+Production React Native + Expo task command app with an Express API and Supabase PostgreSQL backend.
 
-## Monorepo layout
+## Architecture
 
-- `artifacts/mobile` — Expo React Native mobile app (navigation via React Navigation; configured with expo-router)
-- `artifacts/api-server` — Express API server (mounted under `/api`)
-- `artifacts/mockup-sandbox` — Vite-based UI sandbox
-- `lib/*` — shared libraries (OpenAPI spec + generated clients, Zod types, DB package)
+- `artifacts/mobile`: Expo mobile app using `expo-router`, secure session storage, realtime subscriptions, task/user UI, calendar workflows, voice commands, and WhatsApp sharing.
+- `backend`: Express API that owns privileged Supabase operations, validates input with Zod, protects routes with Supabase Auth sessions, proxies OpenAI transcription/chat requests, and logs audit/notification/voice events.
+- `supabase/migrations`: PostgreSQL schema, constraints, indexes, RLS policies, triggers, and realtime publication setup.
+- `lib/*`: shared API/schema tooling used by the monorepo.
 
-## Prerequisites
+The mobile app does not store production task/user data as the source of truth. Supabase PostgreSQL is authoritative. Local storage is used only for secure tokens, theme preference, and a lightweight offline read/action cache.
 
-- Node.js (recent LTS recommended)
-- `pnpm` (this repo enforces pnpm during install)
-- For running the mobile app:
-  - Expo Go on your phone **or** Android Studio / Xcode simulator
-- For running the API with a database (optional): PostgreSQL
+## Core Stack
 
-## Install
+- Mobile: Expo, React Native, `expo-router`, `expo-secure-store`, `expo-av`, `expo-notifications`, `@supabase/supabase-js`
+- Backend: Node.js, Express, Supabase Auth, Supabase PostgreSQL, Zod, Helmet, rate limiting
+- Database: Supabase PostgreSQL with RLS
+- Voice: native/web speech capture, backend OpenAI proxy, local command parser/executor, Supabase voice logs
+- WhatsApp: mobile deep links plus backend push-forward support using Supabase-backed users/tasks
 
-From the repo root:
+## Setup
+
+1. Install dependencies from the repo root:
 
 ```bash
 pnpm install
 ```
 
-## Quick start (recommended)
+2. Create a Supabase project and apply:
 
-### 1) Run the mobile app
+```text
+supabase/migrations/202605090001_initial_schema.sql
+```
+
+3. Configure backend environment:
 
 ```bash
+cd backend
+cp .env.example .env
+```
+
+Required backend values:
+
+```env
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_ANON_KEY=your-public-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-server-only-service-role-key
+GROQ_API_KEY=your-groq-key
+GROQ_CHAT_MODEL=llama-3.3-70b-versatile
+GROQ_BASE_URL=https://api.groq.com/openai/v1
+GROQ_TRANSCRIPTION_MODEL=whisper-large-v3-turbo
+OPENAI_TRANSCRIPTION_API_KEY=your-openai-key-for-whisper
+PORT=3001
+CORS_ORIGINS=http://localhost:8081,http://localhost:19006
+NODE_ENV=development
+```
+
+How to get each backend key:
+- `SUPABASE_URL`: Supabase Dashboard -> Project Settings -> API -> Project URL.
+- `SUPABASE_ANON_KEY`: same page -> `anon` `public` key.
+- `SUPABASE_SERVICE_ROLE_KEY`: same page -> `service_role` `secret` key (backend only).
+- `GROQ_API_KEY`: Groq Console -> API Keys -> create key (used for chat/NLP).
+- `OPENAI_TRANSCRIPTION_API_KEY`: optional OpenAI key for Whisper transcription.
+- `GROQ_TRANSCRIPTION_MODEL`: optional; defaults to `whisper-large-v3-turbo` when Groq is used for transcription fallback.
+
+4. Configure mobile environment:
+
+```bash
+cd artifacts/mobile
+cp .env.example .env
+```
+
+Required mobile values:
+
+```env
+EXPO_PUBLIC_API_BASE_URL=http://localhost:3001
+EXPO_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your-public-anon-key
+```
+
+For Android emulator, use `http://10.0.2.2:3001`. For a physical device, use your backend machine LAN IP.
+
+After changing any `.env` values:
+- Stop backend + Expo.
+- Restart backend first, then Expo.
+- For Expo env updates, clear cache once: `pnpm --filter @workspace/mobile exec expo start -c`.
+
+5. Optional seed:
+
+```bash
+pnpm --filter @workspace/backend run seed
+```
+
+6. Run locally:
+
+```bash
+pnpm --filter @workspace/backend run dev
 pnpm --filter @workspace/mobile run dev
 ```
 
-Expo will print a QR code + URLs.
+## Supabase Model
 
-- Press `a` (Android) / `i` (iOS) in the Expo CLI, or scan the QR code in Expo Go.
+Tables:
 
-**Default login** (from the seeded in-app data):
-- Email: `admin@taskcommand.io`
-- Password: `admin123`
+- `users`: Supabase Auth profile rows, roles, phone numbers, avatar color, timestamps
+- `tasks`: task metadata, priority/status, deadline, creator, tags, notes
+- `task_assignments`: many-to-many task assignment join table
+- `notifications`: notification history and WhatsApp forwarding actions
+- `voice_logs`: lightweight command, intent, status, and metadata records
+- `audit_logs`: administrative and security-relevant event trail
 
-Note: the mobile app persists data locally using `AsyncStorage`, so it can be used without the API server.
+Security:
 
-### 2) (Optional) Run the API server
+- RLS is enabled on all production tables.
+- Service-role keys are backend-only.
+- Expo only receives the public anon key.
+- Regular users cannot mutate user profiles directly through Supabase.
+- Backend route permissions enforce head-manager-only user management and task deletion.
 
-```bash
-pnpm --filter @workspace/api-server run dev
-```
+## Production Notes
 
-By default the dev script sets `PORT=3000`.
+- Store backend secrets in your hosting provider secret manager.
+- Store Expo public values in EAS environment variables for APK builds.
+- Keep `SUPABASE_SERVICE_ROLE_KEY` out of mobile config, source control, and `app.json`.
+- Configure Supabase Auth email behavior to match onboarding.
+- Keep the Supabase project on a plan that will not pause if long idle periods are unacceptable.
+- Configure database backups, log retention, and monitoring before launch.
+- Register Android notification channels and push credentials before relying on WhatsApp forward notifications.
 
-Health checks:
-- http://localhost:3000/api/health
-- http://localhost:3000/api/healthz
+## Validation
 
-## Build an Android APK
-
-This repo uses **Expo (React Native)** in `artifacts/mobile`. There are two supported ways to generate an APK:
-
-### Option A) EAS Build (recommended)
-
-This builds in the cloud and outputs a download link for an `.apk`.
-
-From the repo root:
-
-```bash
-cd artifacts/mobile
-pnpm dlx eas-cli login
-pnpm dlx eas-cli init
-pnpm dlx eas-cli build -p android --profile preview
-```
-
-Notes:
-- The `preview` profile is configured to build an **APK** (see `artifacts/mobile/eas.json`).
-- `eas init` will add an Expo project id into the Expo config when you run it.
-
-### Option B) Local build (Android Studio / Gradle)
-
-This generates the native Android project locally and builds the APK via Gradle.
-
-Prerequisites:
-- Android Studio installed (SDK + platform tools)
-- JDK 17 (recommended for current React Native)
-
-If Gradle fails with **“SDK location not found”**, either:
-- Set `ANDROID_HOME` (or `ANDROID_SDK_ROOT`) to your Android SDK path, or
-- Create `artifacts/mobile/android/local.properties` with:
-
-```properties
-sdk.dir=C:/Users/<YOUR_USER>/AppData/Local/Android/Sdk
-```
-
-From the repo root:
+Useful checks:
 
 ```bash
-pnpm --filter @workspace/mobile exec expo prebuild --platform android
+pnpm --filter @workspace/backend run typecheck
+pnpm --filter @workspace/mobile run typecheck
+pnpm --filter @workspace/backend run build
+pnpm --filter @workspace/mobile run build
 ```
 
-That command generates:
-- `artifacts/mobile/android/app/src/main/AndroidManifest.xml`
-- `artifacts/mobile/android/build.gradle` and related Gradle files
-
-Then build the APK:
-
-```bash
-cd artifacts/mobile/android
-gradlew.bat assembleRelease
-```
-
-Run on an emulator/device using the React Native CLI (builds + installs a **debug** APK):
-
-```bash
-cd artifacts/mobile
-npx react-native run-android
-```
-
-If you want to build/install the **release** variant on a device/emulator:
-
-```bash
-cd artifacts/mobile
-npx react-native run-android --mode release
-```
-
-Debug APK output path (after a successful build):
-- `artifacts/mobile/android/app/build/outputs/apk/debug/app-debug.apk`
-
-APK output path:
-- `artifacts/mobile/android/app/build/outputs/apk/release/app-release.apk`
-
-If you only need a debug APK:
-
-```bash
-gradlew.bat assembleDebug
-```
-
-## Running other packages
-
-### Mockup sandbox (Vite)
-
-```bash
-pnpm --filter @workspace/mockup-sandbox run dev
-```
-
-Defaults:
-- URL: http://localhost:5173/
-- If you need a different port/base path, set `PORT` and/or `BASE_PATH`.
-
-## Environment variables
-
-### API server (`artifacts/api-server/.env`)
-
-The API server will load a local `.env` file from its working directory (when present).
-
-Common variables:
-
-```bash
-# artifacts/api-server/.env
-PORT=3000
-# DATABASE_URL=postgresql://USER:PASSWORD@localhost:5432/progress_tracker
-```
-
-If you don’t need database-backed routes, you can start the API server just for basic routes like health checks.
-
-## Useful repo commands
-
-From the repo root:
-
-- Typecheck everything:
-  ```bash
-  pnpm run typecheck
-  ```
-- Build everything:
-  ```bash
-  pnpm run build
-  ```
-
-## Troubleshooting
-
-- **Install fails with “Use pnpm instead”**: run `pnpm install` (not `npm install`).
-- **Windows native build errors (Rollup/Tailwind/LightningCSS)**: this repo pins the Windows-native packages needed by the mockup sandbox. If you still hit missing-native-module errors (often after switching Node versions), try a clean reinstall.
-
-  PowerShell (from repo root):
-  ```powershell
-  Remove-Item -Recurse -Force node_modules -ErrorAction SilentlyContinue
-  Get-ChildItem -Recurse -Directory -Filter node_modules | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-  pnpm install
-  ```
-
-  Or a lighter-weight option:
-  ```bash
-  pnpm install --force
-  ```
-- **PostgreSQL prompts for a password / DB connection fails**: set a working `DATABASE_URL` (or configure local Postgres auth). The mobile app does not require Postgres.
+If `pnpm` is unavailable in a constrained shell, run the local TypeScript binaries from `backend/node_modules/.bin` and `artifacts/mobile/node_modules/.bin`.

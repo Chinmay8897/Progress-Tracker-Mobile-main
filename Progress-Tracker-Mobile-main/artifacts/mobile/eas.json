@@ -1,17 +1,52 @@
 {
   "cli": {
-    "version": ">= 12.0.0"
+    "version": ">= 14.0.0",
+    "appVersionSource": "local"
   },
   "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleDebug"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "http://10.0.2.2:3001",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://hqdcpbbvmbuapsdgrlnx.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxZGNwYmJ2bWJ1YXBzZGdybG54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzODA5MzcsImV4cCI6MjA5Mzk1NjkzN30.uldm4k3jB9Gu2TWHBP6ARHqx9FbH-9Je9akSxcXNvng"
+      }
+    },
     "preview": {
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-      }
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://your-staging-api.example.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://your-staging-project-ref.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "your-staging-public-anon-key"
+      },
+      "channel": "preview"
     },
     "production": {
+      "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://your-production-api.example.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://your-production-project-ref.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "your-production-public-anon-key"
+      },
+      "channel": "production"
+    }
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "./google-services.json",
+        "track": "internal"
       }
     }
   }

@@ -43,8 +43,8 @@ const colors = {
     // Surface
     surface: "#ffffff",
     surfaceSecondary: "#f4f5f7",
-    header: "#0d1117",
-    headerForeground: "#ffffff",
+    header: "#ffffff",
+    headerForeground: "#0d1117",
   },
 
   dark: {

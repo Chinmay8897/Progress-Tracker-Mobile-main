@@ -33,9 +33,14 @@ minimumReleaseAgeExclude:
   # this setting guards against does not apply to our own packages.
   - '@replit/*'
   - stripe-replit-sync
+  - '@expo/*'
+  - expo
+  - react
+  - react-dom
 
 packages:
   - artifacts/*
+  - backend
   - lib/*
   - lib/integrations/*
   - scripts
@@ -157,3 +162,6 @@ overrides:
   # drizzle-kit uses esbuild internally on an older version that's vulnerable, this overrides it
   "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
   esbuild: "0.27.3"
+
+allowBuilds:
+  esbuild: set this to true or false

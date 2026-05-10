@@ -16,6 +16,7 @@ import TaskFormModal from "@/components/TaskFormModal";
 import { getPriorityColor } from "@/components/TaskCard";
 import { Priority, TaskStatus, useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
+import { toDateKey, parseDateKey } from "@/utils/date";
 
 const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = [
@@ -30,13 +31,13 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
   done: "Done", cancelled: "Cancelled",
 };
 
-function toDateKey(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
+// toDateKey and parseDateKey imported from @/utils/date
 
-function parseDateKey(key: string): Date {
+/** Safely parse a date key, returning today if invalid. */
+function parseDateKeyOrToday(key: string): Date {
   const [y, m, d] = key.split("-").map(Number);
-  return new Date(y, m - 1, d);
+  const result = new Date(y, m - 1, d);
+  return Number.isNaN(result.getTime()) ? new Date() : result;
 }
 
 export default function CalendarScreen() {
@@ -49,7 +50,7 @@ export default function CalendarScreen() {
 
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
-  const [selectedDateKey, setSelectedDateKey] = useState(todayKey);
+  const [selectedDateKey, setSelectedDateKey] = useState<string>(todayKey);
   const [globalView, setGlobalView] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [moving, setMoving] = useState(false);
@@ -112,7 +113,7 @@ export default function CalendarScreen() {
   const pendingOnSelected = selectedTasks.filter(t => t.status !== "done" && t.status !== "cancelled");
 
   // "Move Pending" button visible when selected day is today or in the past AND has pending tasks
-  const selectedDate = parseDateKey(selectedDateKey);
+  const selectedDate = parseDateKeyOrToday(selectedDateKey);
   selectedDate.setHours(0, 0, 0, 0);
   const todayMidnight = new Date(today);
   todayMidnight.setHours(0, 0, 0, 0);
@@ -127,7 +128,7 @@ export default function CalendarScreen() {
     setMovedCount(count);
     setMoving(false);
     // Select the next day so user can see the moved tasks
-    const next = new Date(parseDateKey(selectedDateKey));
+    const next = new Date(parseDateKeyOrToday(selectedDateKey));
     next.setDate(next.getDate() + 1);
     setSelectedDateKey(toDateKey(next));
     if (next.getMonth() !== viewMonth) {
@@ -328,7 +329,7 @@ export default function CalendarScreen() {
     fab: {
       position: "absolute",
       right: 20,
-      bottom: bottomPadding - 70,
+      bottom: bottomPadding - 20,
       width: 52,
       height: 52,
       borderRadius: 26,
@@ -343,7 +344,7 @@ export default function CalendarScreen() {
     },
   });
 
-  const selectedDisplay = parseDateKey(selectedDateKey);
+  const selectedDisplay = parseDateKeyOrToday(selectedDateKey);
   const isSelectedToday = selectedDateKey === todayKey;
 
   return (

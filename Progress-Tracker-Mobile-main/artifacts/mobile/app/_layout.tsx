@@ -16,6 +16,14 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppProvider, useApp } from "@/context/AppContext";
 import { ThemeProvider } from "@/context/ThemeContext";
+import {
+  WhatsAppIntegrationProvider,
+  registerNotificationHandler,
+} from "@/context/WhatsAppIntegrationProvider";
+
+// ─── Register notification display handler at module load time ────────────────
+// Must be called OUTSIDE of any component to take effect before the first render.
+registerNotificationHandler();
 
 SplashScreen.preventAutoHideAsync();
 
@@ -79,11 +87,16 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <ThemeProvider>
             <AppProvider>
-              <GestureHandlerRootView style={{ flex: 1 }}>
-                <KeyboardProvider>
-                  <RootStack />
-                </KeyboardProvider>
-              </GestureHandlerRootView>
+              {/* WhatsAppIntegrationProvider must live inside AppProvider so it
+                  can access auth state if needed in future, but outside the
+                  navigation stack so it persists across all routes. */}
+              <WhatsAppIntegrationProvider>
+                <GestureHandlerRootView style={{ flex: 1 }}>
+                  <KeyboardProvider>
+                    <RootStack />
+                  </KeyboardProvider>
+                </GestureHandlerRootView>
+              </WhatsAppIntegrationProvider>
             </AppProvider>
           </ThemeProvider>
         </QueryClientProvider>

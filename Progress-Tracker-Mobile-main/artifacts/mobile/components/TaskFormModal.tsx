@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import DatePickerModal from "@/components/DatePickerModal";
 import { Priority, Task, TaskStatus, useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
+import { ApiError } from "@/services/api";
 import { normalizeDateKey, parseDateKey, toDateKey } from "@/utils/date";
 
 interface TaskFormModalProps {
@@ -169,6 +170,18 @@ export default function TaskFormModal({ visible, onClose, editTask, defaultAssig
       setError("Title is required");
       return;
     }
+    if (title.trim().length > 500) {
+      setError("Title must be 500 characters or less.");
+      return;
+    }
+    if (description.trim().length > 5000) {
+      setError("Description must be 5000 characters or less.");
+      return;
+    }
+    if (notes.trim().length > 5000) {
+      setError("Notes must be 5000 characters or less.");
+      return;
+    }
 
     const normalizedDue = normalizeDateKey(dueDate);
     if (!normalizedDue) {
@@ -176,35 +189,59 @@ export default function TaskFormModal({ visible, onClose, editTask, defaultAssig
       return;
     }
 
+    const resolvedAssigneeId = isHeadManager ? assigneeId : (currentUser?.id ?? assigneeId);
+    if (!resolvedAssigneeId) {
+      setError("Assignee is required. Please select a team member.");
+      return;
+    }
+
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     const tagsList = tags.split(",").map(t => t.trim()).filter(Boolean);
-
-    if (editTask) {
-      await updateTask(editTask.id, {
-        title,
-        description,
-        assigneeId: isHeadManager ? assigneeId : (currentUser?.id ?? assigneeId),
-        dueDate: normalizedDue,
-        priority,
-        status,
-        tags: tagsList,
-        notes,
-      });
-    } else {
-      await addTask({
-        title,
-        description,
-        assigneeId: isHeadManager ? assigneeId : (currentUser?.id ?? assigneeId),
-        dueDate: normalizedDue,
-        priority,
-        status: "open",
-        tags: tagsList,
-        notes,
-        createdBy: currentUser?.id ?? "",
-      });
+    if (tagsList.length > 20) {
+      setError("You can add at most 20 tags.");
+      return;
     }
-    handleDismiss();
+    if (tagsList.some(tag => tag.length > 50)) {
+      setError("Each tag must be 50 characters or less.");
+      return;
+    }
+
+    try {
+      if (editTask) {
+        await updateTask(editTask.id, {
+          title,
+          description,
+          assigneeId: resolvedAssigneeId,
+          dueDate: normalizedDue,
+          priority,
+          status,
+          tags: tagsList,
+          notes,
+        });
+      } else {
+        await addTask({
+          title,
+          description,
+          assigneeId: resolvedAssigneeId,
+          dueDate: normalizedDue,
+          priority,
+          status: "open",
+          tags: tagsList,
+          notes,
+          createdBy: currentUser?.id ?? "",
+        });
+      }
+      handleDismiss();
+    } catch (err) {
+      let message = err instanceof Error ? err.message : "Could not save task. Please try again.";
+      if (err instanceof ApiError && err.details) {
+        const first = Object.values(err.details).flat().find(Boolean);
+        if (first) message = first;
+      }
+      setError(message);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
   }, [title, description, assigneeId, dueDate, priority, status, tags, notes, editTask, isHeadManager, currentUser, addTask, updateTask, handleDismiss]);
 
   const styles = StyleSheet.create({

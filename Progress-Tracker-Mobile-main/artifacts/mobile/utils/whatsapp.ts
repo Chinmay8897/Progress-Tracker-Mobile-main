@@ -11,10 +11,15 @@ function encode(text: string) {
 /**
  * Tries to share via WhatsApp deep link; falls back to wa.me; then falls back to the system share sheet.
  */
-export async function shareToWhatsApp(text: string): Promise<WhatsAppShareResult> {
+export async function shareToWhatsApp(text: string, phoneNumber?: string): Promise<WhatsAppShareResult> {
   const encoded = encode(text);
-  const appUrl = `whatsapp://send?text=${encoded}`;
-  const webUrl = `https://wa.me/?text=${encoded}`;
+  const normalizedPhone = phoneNumber?.replace(/[^\d]/g, "");
+  const appUrl = normalizedPhone
+    ? `whatsapp://send?phone=${normalizedPhone}&text=${encoded}`
+    : `whatsapp://send?text=${encoded}`;
+  const webUrl = normalizedPhone
+    ? `https://wa.me/${normalizedPhone}?text=${encoded}`
+    : `https://wa.me/?text=${encoded}`;
 
   try {
     // Prefer the actual app deep link when WhatsApp is installed.
