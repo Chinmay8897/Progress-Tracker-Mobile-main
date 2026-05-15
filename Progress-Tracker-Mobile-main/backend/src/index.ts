@@ -6,7 +6,7 @@
  * - Rate limiting
  * - CORS protection
  * - Helmet security headers
- * - OpenAI API proxy
+ * - AI provider proxy
  * - Supabase Auth + PostgreSQL
  */
 

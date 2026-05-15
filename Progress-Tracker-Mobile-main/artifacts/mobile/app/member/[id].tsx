@@ -6,12 +6,12 @@ import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import TaskCard from "@/components/TaskCard";
 import TaskFormModal from "@/components/TaskFormModal";
-import { Role, TaskStatus, useApp } from "@/context/AppContext";
+import { UserRole, TaskStatus, useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 
-const ROLE_LABELS: Record<Role, string> = {
-  head_manager: "Head Manager", admin_lite: "Admin-Lite", project_lead: "Project Lead",
-  developer: "Developer", support_agent: "Support Agent",
+const ROLE_LABELS: Record<UserRole, string> = {
+  admin: "Admin",
+  manager: "Manager",
 };
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
@@ -21,7 +21,7 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
 export default function MemberProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const colors = useColors();
-  const { users, getTasksForUser, isHeadManager, deleteUser } = useApp();
+  const { users, getTasksForUser, isAdmin, deleteUser } = useApp();
   const insets = useSafeAreaInsets();
   const [activeStatus, setActiveStatus] = useState<string>("all");
   const [showTaskForm, setShowTaskForm] = useState(false);
@@ -120,7 +120,7 @@ export default function MemberProfileScreen() {
               <Feather name="arrow-left" size={16} color={colors.headerForeground + "99"} />
               <Text style={styles.backText}>Team</Text>
             </Pressable>
-            {isHeadManager && member.role !== "head_manager" && (
+            {isAdmin && member.role !== "admin" && (
               <Pressable style={styles.removeBtn} onPress={() => setConfirmingRemove(true)}>
                 <Feather name="user-minus" size={15} color={colors.critical} />
               </Pressable>
@@ -231,7 +231,7 @@ export default function MemberProfileScreen() {
         showsVerticalScrollIndicator={false}
       />
 
-      {isHeadManager && (
+      {isAdmin && (
         <Pressable style={styles.assignBtn} onPress={() => setShowTaskForm(true)}>
           <Feather name="plus" size={16} color={colors.primaryForeground} />
           <Text style={styles.assignBtnText}>Assign Task</Text>

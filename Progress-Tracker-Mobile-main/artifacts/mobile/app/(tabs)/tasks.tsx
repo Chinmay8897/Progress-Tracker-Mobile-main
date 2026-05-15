@@ -21,12 +21,12 @@ const STATUS_OPTIONS = [
 
 export default function TasksScreen() {
   const colors = useColors();
-  const { tasks, currentUser, isHeadManager } = useApp();
+  const { tasks, currentUser, isAdmin } = useApp();
   const insets = useSafeAreaInsets();
   const [statusFilter, setStatusFilter] = useState("all");
   const [showModal, setShowModal] = useState(false);
 
-  const myTasks = isHeadManager ? tasks : tasks.filter(t => t.assigneeId === currentUser?.id);
+  const myTasks = isAdmin ? tasks : tasks.filter(t => t.assigneeId === currentUser?.id);
 
   const filtered = useMemo(() => {
     let list = myTasks;

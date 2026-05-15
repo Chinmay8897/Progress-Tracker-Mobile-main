@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { randomUUID } from "crypto";
 import { z } from "zod";
-import { requireAuth, requireHeadManager } from "../middleware/auth.js";
+import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import { supabaseAdmin } from "../services/supabase/supabaseClient.js";
 import {
   getTaskById,
@@ -9,6 +9,7 @@ import {
   insertAuditLog,
   listTasksForUser,
   sanitizeTask,
+  getDeviceTokensForUser,
   type TaskPriority,
   type TaskStatus,
 } from "../services/supabase/repositories.js";
@@ -47,7 +48,7 @@ const movePendingSchema = z.object({
 
 function canAccessTask(task: { created_by: string; task_assignments?: Array<{ user_id: string }> }, user: Express.Request["user"]): boolean {
   if (!user) return false;
-  if (user.role === "head_manager") return true;
+  if (user.role === "admin") return true;
   return task.created_by === user.userId || !!task.task_assignments?.some(a => a.user_id === user.userId);
 }
 
@@ -109,7 +110,7 @@ router.post("/", requireAuth, async (req: Request, res: Response): Promise<void>
     }
 
     const data = parsed.data;
-    const assigneeId = req.user!.role === "head_manager" ? data.assigneeId : req.user!.userId;
+    const assigneeId = req.user!.role === "admin" ? data.assigneeId : req.user!.userId;
     const assignee = await getUserById(assigneeId);
     if (!assignee) {
       res.status(400).json({ error: "Assignee not found" });
@@ -150,8 +151,8 @@ router.post("/", requireAuth, async (req: Request, res: Response): Promise<void>
 
     const created = await getTaskById(id);
 
-    const adminToken = process.env.ADMIN_EXPO_PUSH_TOKEN;
-    if (adminToken && assignee.phone_number) {
+    const creatorTokens = await getDeviceTokensForUser(req.user!.userId);
+    if (creatorTokens.length > 0 && assignee.phone_number) {
       const taskDetails: WAForwardTaskDetails = {
         taskId: id,
         taskTitle: data.title,
@@ -161,7 +162,7 @@ router.post("/", requireAuth, async (req: Request, res: Response): Promise<void>
         assigneePhone: assignee.phone_number,
         notes: data.notes || undefined,
       };
-      sendWAForwardRequest(adminToken, taskDetails).catch(err => {
+      sendWAForwardRequest(creatorTokens, taskDetails).catch(err => {
         console.error("[tasks] Non-fatal WhatsApp push failure:", err);
       });
     }
@@ -210,8 +211,8 @@ router.put("/:id", requireAuth, async (req: Request, res: Response): Promise<voi
     if (error) throw error;
 
     if (data.assigneeId && data.assigneeId !== task.task_assignments?.[0]?.user_id) {
-      if (req.user!.role !== "head_manager" && data.assigneeId !== req.user!.userId) {
-        res.status(403).json({ error: "Only Head Managers can assign tasks to other users" });
+      if (req.user!.role !== "admin" && data.assigneeId !== req.user!.userId) {
+        res.status(403).json({ error: "Only admins can assign tasks to other users" });
         return;
       }
       const assignee = await getUserById(data.assigneeId);
@@ -236,7 +237,7 @@ router.put("/:id", requireAuth, async (req: Request, res: Response): Promise<voi
   }
 });
 
-router.delete("/:id", requireAuth, requireHeadManager, async (req: Request, res: Response): Promise<void> => {
+router.delete("/:id", requireAuth, requireAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
     const task = await getTaskById(routeParam(req.params.id));
     if (!task) {

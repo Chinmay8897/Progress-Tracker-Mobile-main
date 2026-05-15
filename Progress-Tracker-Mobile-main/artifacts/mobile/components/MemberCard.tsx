@@ -4,7 +4,7 @@ import { router } from "expo-router";
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
-import { Role, User } from "@/context/AppContext";
+import { UserRole, User } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 
@@ -13,12 +13,9 @@ interface MemberCardProps {
   index?: number;
 }
 
-const ROLE_LABELS: Record<Role, string> = {
-  head_manager: "Head Manager",
-  admin_lite: "Admin-Lite",
-  project_lead: "Project Lead",
-  developer: "Developer",
-  support_agent: "Support Agent",
+const ROLE_LABELS: Record<UserRole, string> = {
+  admin: "Admin",
+  manager: "Manager",
 };
 
 export default function MemberCard({ user, index = 0 }: MemberCardProps) {

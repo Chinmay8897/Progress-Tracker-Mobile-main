@@ -10,8 +10,11 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import NetInfo from "@react-native-community/netinfo";
+import { Platform } from "react-native";
+import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
 import {
-  authApi, usersApi, tasksApi,
+  authApi, usersApi, tasksApi, deviceTokensApi,
   setOnUnauthorized,
   type ApiUser, type ApiTask, ApiError,
 } from "@/services/api";
@@ -35,7 +38,7 @@ import { logger } from "@/utils/logger";
 
 // ─── Types (match frontend expectations) ─────────────────────────────────────
 
-export type Role = "head_manager" | "admin_lite" | "project_lead" | "developer" | "support_agent";
+export type UserRole = "admin" | "manager";
 export type Priority = "critical" | "high" | "medium" | "low";
 export type TaskStatus = "open" | "in_progress" | "blocked" | "done" | "cancelled";
 
@@ -43,7 +46,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: Role;
+  role: UserRole;
   avatarColor: string;
   phoneNumber?: string;
 }
@@ -68,18 +71,18 @@ interface AppContextType {
   users: User[];
   tasks: Task[];
   login: (email: string, password: string) => Promise<boolean>;
-  register: (name: string, email: string, password: string, phoneNumber?: string, role?: string) => Promise<boolean>;
+  register: (name: string, email: string, password: string, phoneNumber?: string, role?: UserRole) => Promise<boolean>;
   logout: () => void;
   addTask: (task: Omit<Task, "id" | "createdAt" | "updatedAt">) => Promise<void>;
   updateTask: (taskId: string, updates: Partial<Task>) => Promise<void>;
   moveTaskToDate: (taskId: string, dateKey: string) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
-  addUser: (user: { name: string; email: string; password: string; role: Role; avatarColor?: string; phoneNumber?: string }) => Promise<void>;
+  addUser: (user: { name: string; email: string; password: string; role: UserRole; avatarColor?: string; phoneNumber?: string }) => Promise<void>;
   updateUser: (userId: string, updates: Partial<User>) => Promise<void>;
   deleteUser: (userId: string) => Promise<void>;
   getTasksForUser: (userId: string) => Task[];
   movePendingToNextDay: (dateStr: string) => Promise<number>;
-  isHeadManager: boolean;
+  isAdmin: boolean;
   loading: boolean;
   isOnline: boolean;
   refreshData: () => Promise<void>;
@@ -92,7 +95,7 @@ function apiUserToUser(u: ApiUser): User {
     id: u.id,
     name: u.name,
     email: u.email,
-    role: u.role as Role,
+    role: u.role as UserRole,
     avatarColor: u.avatarColor,
     phoneNumber: u.phoneNumber,
   };
@@ -227,6 +230,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
         // Fetch all data
         await fetchAllData();
+        void registerDeviceToken();
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
           await clearSession();
@@ -258,6 +262,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       await setCachedAppData(nextUsers, nextTasks);
     } catch (err) {
       logger.error("AppContext", "Failed to fetch data", err);
+    }
+  };
+
+  const registerDeviceToken = async () => {
+    if (Platform.OS === "web") return;
+    try {
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+      if (existingStatus !== "granted") {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      if (finalStatus !== "granted") {
+        logger.warn("AppContext", "Push notifications permission not granted");
+        return;
+      }
+
+      const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+
+      const tokenData = await Notifications.getExpoPushTokenAsync({
+        projectId,
+      });
+
+      if (tokenData.data) {
+        await deviceTokensApi.register(tokenData.data, Platform.OS);
+        logger.info("AppContext", `Registered push token automatically`);
+      }
+    } catch (err) {
+      logger.error("AppContext", "Failed to register push token", err);
     }
   };
 
@@ -316,6 +349,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       // Fetch data after login
       await fetchAllData();
+      void registerDeviceToken();
 
       return true;
     } catch (err) {
@@ -341,6 +375,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       // Fetch data after registration
       await fetchAllData();
+      void registerDeviceToken();
 
       return true;
     } catch (err) {
@@ -481,7 +516,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // ── User CRUD ─────────────────────────────────────────────────────────────
 
-  const addUser = useCallback(async (userData: { name: string; email: string; password: string; role: Role; avatarColor?: string; phoneNumber?: string }) => {
+  const addUser = useCallback(async (userData: { name: string; email: string; password: string; role: UserRole; avatarColor?: string; phoneNumber?: string }) => {
     try {
       if (!isOnlineRef.current) {
         await enqueueAction("CREATE_USER", userData);
@@ -583,7 +618,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     deleteUser,
     getTasksForUser,
     movePendingToNextDay,
-    isHeadManager: (currentUser?.role as Role) === "head_manager",
+    isAdmin: (currentUser?.role as UserRole) === "admin",
     loading,
     isOnline,
     refreshData,

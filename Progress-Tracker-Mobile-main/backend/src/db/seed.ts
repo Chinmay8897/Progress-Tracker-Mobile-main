@@ -12,11 +12,11 @@ interface SeedUser {
 }
 
 const SEED_USERS: SeedUser[] = [
-  { name: "Alex Rivera", email: "admin@taskcommand.io", password: "Admin@123", role: "head_manager", avatarColor: "#1a6cf5" },
-  { name: "Jordan Chen", email: "jordan@taskcommand.io", password: "Jordan@123", role: "project_lead", avatarColor: "#16a34a" },
-  { name: "Sam Patel", email: "sam@taskcommand.io", password: "Sam@1234", role: "developer", avatarColor: "#9333ea" },
-  { name: "Taylor Kim", email: "taylor@taskcommand.io", password: "Taylor@123", role: "support_agent", avatarColor: "#ea580c" },
-  { name: "Morgan Lee", email: "morgan@taskcommand.io", password: "Morgan@123", role: "admin_lite", avatarColor: "#0891b2" },
+  { name: "Alex Rivera", email: "admin@taskcommand.io", password: "Admin@123", role: "admin", avatarColor: "#1a6cf5" },
+  { name: "Jordan Chen", email: "jordan@taskcommand.io", password: "Jordan@123", role: "manager", avatarColor: "#16a34a" },
+  { name: "Sam Patel", email: "sam@taskcommand.io", password: "Sam@1234", role: "manager", avatarColor: "#9333ea" },
+  { name: "Taylor Kim", email: "taylor@taskcommand.io", password: "Taylor@123", role: "manager", avatarColor: "#ea580c" },
+  { name: "Morgan Lee", email: "morgan@taskcommand.io", password: "Morgan@123", role: "manager", avatarColor: "#0891b2" },
 ];
 
 const SEED_TASKS = [

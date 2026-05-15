@@ -5,16 +5,13 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-n
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ThemePickerModal from "@/components/ThemePickerModal";
-import { Role, useApp } from "@/context/AppContext";
+import { UserRole, useApp } from "@/context/AppContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useColors } from "@/hooks/useColors";
 
-const ROLE_LABELS: Record<Role, string> = {
-  head_manager: "Head Manager",
-  admin_lite: "Admin-Lite",
-  project_lead: "Project Lead",
-  developer: "Developer",
-  support_agent: "Support Agent",
+const ROLE_LABELS: Record<UserRole, string> = {
+  admin: "Admin",
+  manager: "Manager",
 };
 
 export default function SettingsScreen() {
@@ -174,7 +171,7 @@ export default function SettingsScreen() {
           <Text style={styles.name}>{currentUser?.name}</Text>
           <Text style={styles.email}>{currentUser?.email}</Text>
           <View style={styles.roleBadge}>
-            <Text style={styles.roleText}>{ROLE_LABELS[currentUser?.role ?? "developer"]}</Text>
+            <Text style={styles.roleText}>{ROLE_LABELS[currentUser?.role ?? "manager"]}</Text>
           </View>
         </View>
       </Animated.View>

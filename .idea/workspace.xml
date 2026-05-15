@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="NONE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="f3d30f70-27b9-4764-991c-37a8581e416c" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/SUPABASE_SETUP.md" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/SUPABASE_SETUP.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/app.json" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/app.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/app/(tabs)/calendar.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/app/(tabs)/calendar.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/app/(tabs)/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/app/(tabs)/index.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/app/(tabs)/settings.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/app/(tabs)/settings.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/app/(tabs)/tasks.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/app/(tabs)/tasks.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/app/(tabs)/team.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/app/(tabs)/team.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/app/login.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/app/login.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/app/member/[id].tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/app/member/[id].tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/app/task/[id].tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/app/task/[id].tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/components/AddMemberModal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/components/AddMemberModal.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/components/MemberCard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/components/MemberCard.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/components/TaskFormModal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/components/TaskFormModal.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/context/AppContext.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/context/AppContext.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/domain/voice/VoiceService.ts" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/domain/voice/VoiceService.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/eas.json" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/eas.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/services/api.ts" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/services/api.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/utils/config.ts" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/artifacts/mobile/utils/config.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/.env.example" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/.env.example" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/db/seed.ts" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/db/seed.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/index.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/middleware/auth.ts" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/middleware/auth.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/middleware/rateLimit.ts" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/middleware/rateLimit.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/routes/auth.ts" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/routes/auth.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/routes/deviceToken.ts" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/routes/deviceToken.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/routes/events.ts" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/routes/events.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/routes/openai.ts" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/routes/openai.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/routes/tasks.ts" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/routes/tasks.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/routes/users.ts" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/routes/users.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/services/notificationService.ts" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/services/notificationService.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/services/supabase/repositories.ts" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/backend/src/services/supabase/repositories.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/mobile/components/RegisterExpoToken.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/process.md" beforeDir="false" afterPath="$PROJECT_DIR$/Progress-Tracker-Mobile-main/process.md" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="ClangdSettings">
+    <option name="formatViaClangd" value="false" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectColorInfo"><![CDATA[{
+  "customColor": "",
+  "associatedIndex": 2
+}]]></component>
+  <component name="ProjectId" id="3DkV2kxPULSq0PFJy4aYGCaFyFK" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.cidr.known.project.marker": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.readMode.enableVisualFormatting": "true",
+    "cf.first.check.clang-format": "false",
+    "cidr.known.project.marker": "true",
+    "git-widget-placeholder": "main",
+    "kotlin-language-version-configured": "true"
+  }
+}]]></component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="f3d30f70-27b9-4764-991c-37a8581e416c" name="Changes" comment="" />
+      <created>1778825853192</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1778825853192</updated>
+    </task>
+    <servers />
+  </component>
+</project>

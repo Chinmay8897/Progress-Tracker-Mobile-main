@@ -3,7 +3,7 @@
  *
  * - General API: 100 requests per 15 minutes per IP
  * - Auth endpoints: 10 requests per 15 minutes per IP
- * - OpenAI proxy: 20 requests per 15 minutes per IP
+ * - AI proxy: 20 requests per 15 minutes per IP
  */
 
 import rateLimit from "express-rate-limit";
@@ -35,7 +35,7 @@ export const registerLimiter = rateLimit({
   message: { error: "Too many registration attempts, please try again later." },
 });
 
-/** Rate limiter for OpenAI proxy */
+/** Rate limiter for AI proxy */
 export const openaiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 20,

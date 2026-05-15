@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "./supabaseClient.js";
 
-export type AppRole = "head_manager" | "admin_lite" | "project_lead" | "developer" | "support_agent";
+export type UserRole = "admin" | "manager";
 export type TaskPriority = "critical" | "high" | "medium" | "low";
 export type TaskStatus = "open" | "in_progress" | "blocked" | "done" | "cancelled";
 
@@ -10,10 +10,16 @@ export interface UserRow {
   email: string;
   password_hash: string | null;
   phone_number: string | null;
-  role: AppRole;
+  role: string;
   avatar_color: string;
   created_at: string;
   updated_at: string;
+}
+
+export function normalizeAppRole(role: string): UserRole {
+  if (role === "admin" || role === "manager") return role;
+  if (role === "head_manager") return "admin";
+  return "manager";
 }
 
 export interface TaskRow {
@@ -36,7 +42,7 @@ export function sanitizeUser(user: UserRow, includePhone = false) {
     id: user.id,
     name: user.name,
     email: user.email,
-    role: user.role,
+    role: normalizeAppRole(user.role),
     avatarColor: user.avatar_color,
     phoneNumber: includePhone ? user.phone_number ?? "" : "",
     createdAt: user.created_at,
@@ -110,7 +116,7 @@ export async function getTaskById(id: string): Promise<TaskRow | null> {
 }
 
 export async function listTasksForUser(user: { userId: string; role: string }): Promise<TaskRow[]> {
-  if (user.role === "head_manager") {
+  if (normalizeAppRole(user.role) === "admin") {
     const { data, error } = await supabaseAdmin
       .from("tasks")
       .select("*, task_assignments(user_id)")
@@ -135,4 +141,18 @@ export async function listTasksForUser(user: { userId: string; role: string }): 
     .order("deadline", { ascending: true });
   if (error) throw error;
   return (data ?? []) as TaskRow[];
+}
+
+export async function getDeviceTokensForUser(userId: string): Promise<string[]> {
+  const { data, error } = await supabaseAdmin
+    .from("device_tokens")
+    .select("token")
+    .eq("user_id", userId);
+
+  if (error) {
+    console.error(`Failed to fetch device tokens for user ${userId}:`, error.message);
+    return [];
+  }
+
+  return (data ?? []).map(row => row.token);
 }

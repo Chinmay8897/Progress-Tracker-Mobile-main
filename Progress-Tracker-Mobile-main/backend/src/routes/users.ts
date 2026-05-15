@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
-import { requireAuth, requireHeadManager } from "../middleware/auth.js";
+import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import { supabaseAdmin } from "../services/supabase/supabaseClient.js";
 import {
   getUserByEmail,
@@ -8,7 +8,7 @@ import {
   insertAuditLog,
   listUsers,
   sanitizeUser,
-  type AppRole,
+  type UserRole,
 } from "../services/supabase/repositories.js";
 
 const router = Router();
@@ -22,7 +22,7 @@ const createUserSchema = z.object({
   name: z.string().min(1).max(100).trim(),
   email: z.string().email().max(255).trim(),
   password: z.string().min(8, "Password must be at least 8 characters").max(128),
-  role: z.enum(["head_manager", "admin_lite", "project_lead", "developer", "support_agent"]),
+  role: z.enum(["admin", "manager"]),
   avatarColor: z.string().optional(),
   phoneNumber: z.string().max(32).optional(),
 });
@@ -30,7 +30,7 @@ const createUserSchema = z.object({
 const updateUserSchema = z.object({
   name: z.string().min(1).max(100).trim().optional(),
   email: z.string().email().max(255).trim().optional(),
-  role: z.enum(["head_manager", "admin_lite", "project_lead", "developer", "support_agent"]).optional(),
+  role: z.enum(["admin", "manager"]).optional(),
   avatarColor: z.string().optional(),
   phoneNumber: z.string().max(32).nullable().optional(),
 });
@@ -41,7 +41,7 @@ function routeParam(value: string | string[] | undefined): string {
 
 router.get("/", requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
-    const includePhone = req.user!.role === "head_manager";
+    const includePhone = req.user!.role === "admin";
     const rows = await listUsers();
     res.json(rows.map(user => sanitizeUser(user, includePhone || user.id === req.user!.userId)));
   } catch (err) {
@@ -57,7 +57,7 @@ router.get("/:id", requireAuth, async (req: Request, res: Response): Promise<voi
       res.status(404).json({ error: "User not found" });
       return;
     }
-    const includePhone = req.user!.role === "head_manager" || req.user!.userId === user.id;
+    const includePhone = req.user!.role === "admin" || req.user!.userId === user.id;
     res.json(sanitizeUser(user, includePhone));
   } catch (err) {
     console.error("Get user error:", err);
@@ -65,7 +65,7 @@ router.get("/:id", requireAuth, async (req: Request, res: Response): Promise<voi
   }
 });
 
-router.post("/", requireAuth, requireHeadManager, async (req: Request, res: Response): Promise<void> => {
+router.post("/", requireAuth, requireAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
     const parsed = createUserSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -99,7 +99,7 @@ router.post("/", requireAuth, requireHeadManager, async (req: Request, res: Resp
         email,
         password_hash: null,
         phone_number: phoneNumber ?? null,
-        role: role as AppRole,
+        role: role as UserRole,
         avatar_color: color,
       })
       .select("*")
@@ -118,7 +118,7 @@ router.post("/", requireAuth, requireHeadManager, async (req: Request, res: Resp
   }
 });
 
-router.put("/:id", requireAuth, requireHeadManager, async (req: Request, res: Response): Promise<void> => {
+router.put("/:id", requireAuth, requireAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
     const parsed = updateUserSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -151,7 +151,7 @@ router.put("/:id", requireAuth, requireHeadManager, async (req: Request, res: Re
     const updatePayload = {
       name: parsed.data.name ?? existing.name,
       email: parsed.data.email ?? existing.email,
-      role: (parsed.data.role ?? existing.role) as AppRole,
+      role: (parsed.data.role ?? existing.role) as UserRole,
       avatar_color: parsed.data.avatarColor ?? existing.avatar_color,
       phone_number: parsed.data.phoneNumber === undefined ? existing.phone_number : parsed.data.phoneNumber,
       updated_at: new Date().toISOString(),
@@ -173,7 +173,7 @@ router.put("/:id", requireAuth, requireHeadManager, async (req: Request, res: Re
   }
 });
 
-router.delete("/:id", requireAuth, requireHeadManager, async (req: Request, res: Response): Promise<void> => {
+router.delete("/:id", requireAuth, requireAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = routeParam(req.params.id);
     if (userId === req.user!.userId) {

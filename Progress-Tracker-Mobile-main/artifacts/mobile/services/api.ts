@@ -296,6 +296,10 @@ export const notificationsApi = {
     api.post("/api/notifications", data),
 };
 
+export const deviceTokensApi = {
+  register: (token: string, platform?: string) => 
+    api.post("/api/device-token", { token, platform }),
+};
 // ─── AI Proxy Helpers ────────────────────────────────────────────────────────
 // All AI requests go through the backend proxy.
 // Provider keys are NEVER in the client bundle.

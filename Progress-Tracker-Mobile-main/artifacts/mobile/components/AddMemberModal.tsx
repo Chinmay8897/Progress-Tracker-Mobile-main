@@ -12,7 +12,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Role, useApp } from "@/context/AppContext";
+import { UserRole, useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 
 interface AddMemberModalProps {
@@ -20,11 +20,9 @@ interface AddMemberModalProps {
   onClose: () => void;
 }
 
-const BASE_ROLES: { value: Role; label: string }[] = [
-  { value: "admin_lite", label: "Admin-Lite" },
-  { value: "project_lead", label: "Project Lead" },
-  { value: "developer", label: "Developer" },
-  { value: "support_agent", label: "Support Agent" },
+const BASE_ROLES: { value: UserRole; label: string }[] = [
+  { value: "admin", label: "Admin" },
+  { value: "manager", label: "Manager" },
 ];
 
 export default function AddMemberModal({ visible, onClose }: AddMemberModalProps) {
@@ -32,16 +30,16 @@ export default function AddMemberModal({ visible, onClose }: AddMemberModalProps
   const { addUser, currentUser, users } = useApp();
   const insets = useSafeAreaInsets();
 
-  const roleOptions: { value: Role; label: string }[] =
-    currentUser?.role === "head_manager"
-      ? [{ value: "head_manager", label: "Admin" }, ...BASE_ROLES]
+  const roleOptions: { value: UserRole; label: string }[] =
+    currentUser?.role === "admin"
+      ? BASE_ROLES
       : BASE_ROLES;
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<Role>("developer");
+  const [role, setRole] = useState<UserRole>("manager");
   const [error, setError] = useState<string | null>(null);
 
   const handleAdd = async () => {
@@ -89,7 +87,7 @@ export default function AddMemberModal({ visible, onClose }: AddMemberModalProps
       avatarColor: "#1a6cf5",
       phoneNumber: phone || undefined,
     });
-    setName(""); setEmail(""); setPhoneNumber(""); setPassword(""); setRole("developer"); setError(null);
+    setName(""); setEmail(""); setPhoneNumber(""); setPassword(""); setRole("manager"); setError(null);
     onClose();
   };
 

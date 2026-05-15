@@ -10,13 +10,13 @@ import { useColors } from "@/hooks/useColors";
 
 export default function TeamScreen() {
   const colors = useColors();
-  const { users, isHeadManager, currentUser } = useApp();
+  const { users, isAdmin, currentUser } = useApp();
   const insets = useSafeAreaInsets();
   const [showAdd, setShowAdd] = useState(false);
 
-  const teamMembers = isHeadManager
+  const teamMembers = isAdmin
     ? users.filter(u => u.id !== currentUser?.id)
-    : users.filter(u => u.role !== "head_manager");
+    : users;
   const topPadding = insets.top + (Platform.OS === "web" ? 67 : 0);
 
   const styles = StyleSheet.create({
@@ -52,7 +52,7 @@ export default function TeamScreen() {
               <Text style={styles.headerTitle}>Team</Text>
               <Text style={styles.headerSub}>{teamMembers.length} members</Text>
             </View>
-            {isHeadManager && (
+            {isAdmin && (
               <Pressable style={styles.addBtn} onPress={() => setShowAdd(true)}>
                 <Feather name="user-plus" size={18} color={colors.primary} />
               </Pressable>

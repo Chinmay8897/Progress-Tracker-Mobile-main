@@ -38,7 +38,7 @@ You need to configure the environment variables for both the backend and the fro
    ```
 3. Open `.env` and fill in the values:
    - `JWT_SECRET`: A secure random string (e.g., generated via `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`)
-   - `OPENAI_API_KEY`: Your OpenAI API key (required for voice transcription features)
+   - `GROQ_API_KEY`: Your Groq API key (required for voice transcription and chat features)
 
 ### Frontend (Mobile) Config
 1. Navigate to the mobile artifacts directory:

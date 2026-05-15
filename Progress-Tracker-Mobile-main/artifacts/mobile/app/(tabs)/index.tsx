@@ -44,7 +44,7 @@ const STATUS_OPTIONS = [
 
 export default function DashboardScreen() {
   const colors = useColors();
-  const { tasks, users, currentUser, isHeadManager, addTask, updateTask, moveTaskToDate } = useApp();
+  const { tasks, users, currentUser, isAdmin, addTask, updateTask, moveTaskToDate } = useApp();
   const insets = useSafeAreaInsets();
 
   const [priorityFilter, setPriorityFilter] = useState<FilterType>("all");
@@ -61,7 +61,7 @@ export default function DashboardScreen() {
   const executingCommandRef = useRef<string | null>(null);
   const voiceStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const myTasks = isHeadManager ? tasks : tasks.filter(t => t.assigneeId === currentUser?.id);
+  const myTasks = isAdmin ? tasks : tasks.filter(t => t.assigneeId === currentUser?.id);
 
   const stats = useMemo(() => ({
     total: myTasks.length,
@@ -82,7 +82,7 @@ export default function DashboardScreen() {
     });
   }, [myTasks, priorityFilter, statusFilter, assigneeFilter]);
 
-  const teamMembers = users.filter(u => u.role !== "head_manager");
+  const teamMembers = users;
   const assigneeOptions = [
     { label: "All", value: "all" },
     ...teamMembers.map(u => ({ label: u.name.split(" ")[0], value: u.id })),
@@ -362,7 +362,7 @@ export default function DashboardScreen() {
             <View>
               <Text style={styles.greeting}>Welcome back</Text>
               <Text style={styles.headerTitle}>
-                {isHeadManager ? "Command Center" : currentUser?.name?.split(" ")[0]}
+                {isAdmin ? "Command Center" : currentUser?.name?.split(" ")[0]}
               </Text>
             </View>
             <View style={styles.badgeRow}>
@@ -396,13 +396,13 @@ export default function DashboardScreen() {
               <Text style={styles.filterLabel}>Status</Text>
               <FilterChips options={STATUS_OPTIONS} selected={statusFilter} onSelect={setStatusFilter} accentColor={colors.inProgress} />
             </View>
-            {isHeadManager && (
+            {isAdmin && (
               <View style={[styles.filterSection, { marginTop: 8, marginBottom: 14 }]}>
                 <Text style={styles.filterLabel}>Assignee</Text>
                 <FilterChips options={assigneeOptions} selected={assigneeFilter} onSelect={setAssigneeFilter} accentColor={colors.done} />
               </View>
             )}
-            {!isHeadManager && <View style={{ height: 14 }} />}
+            {!isAdmin && <View style={{ height: 14 }} />}
 
             <View style={styles.sectionPad}>
               <Text style={styles.sectionTitle}>{filtered.length} Tasks</Text>
@@ -427,8 +427,8 @@ export default function DashboardScreen() {
         showsVerticalScrollIndicator={false}
       />
 
-      {/* Voice FAB — head manager only */}
-      {isHeadManager && (
+      {/* Voice FAB — admin only */}
+      {isAdmin && (
         <Pressable style={styles.voiceFab} onPress={handleVoiceFab}>
           <Feather
             name="mic"
@@ -438,8 +438,8 @@ export default function DashboardScreen() {
         </Pressable>
       )}
 
-      {/* Add task FAB — head manager only */}
-      {isHeadManager && (
+      {/* Add task FAB — admin only */}
+      {isAdmin && (
         <Pressable style={styles.fab} onPress={() => {
           setVoicePrefill(null);
           setVoiceModalPrompt(null);
@@ -449,8 +449,8 @@ export default function DashboardScreen() {
         </Pressable>
       )}
 
-      {/* Voice command panel — head manager only */}
-      {isHeadManager && showVoicePanel && (
+      {/* Voice command panel — admin only */}
+      {isAdmin && showVoicePanel && (
         <Animated.View entering={FadeInUp.duration(250)} style={styles.voicePanelWrapper}>
           <VoiceCommandPanel
             status={voiceStatus}

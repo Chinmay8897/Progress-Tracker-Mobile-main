@@ -8,7 +8,7 @@ import {
   getUserById,
   insertAuditLog,
   sanitizeUser,
-  type AppRole,
+  type UserRole,
 } from "../services/supabase/repositories.js";
 
 const router = Router();
@@ -37,7 +37,7 @@ const registerSchema = z.object({
   email: z.string().email("Invalid email format").max(255).trim(),
   password: strongPassword,
   phoneNumber: z.string().max(32).optional(),
-  role: z.enum(["head_manager", "admin_lite", "project_lead", "developer", "support_agent"]).default("developer"),
+  role: z.enum(["admin", "manager"]).default("manager"),
 });
 
 const refreshSchema = z.object({
@@ -53,7 +53,7 @@ async function createProfile(input: {
   id: string;
   name: string;
   email: string;
-  role: AppRole;
+  role: UserRole;
   phoneNumber?: string;
   avatarColor?: string;
 }) {

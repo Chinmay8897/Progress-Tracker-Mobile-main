@@ -12,7 +12,6 @@ import {
   Text,
   TextInput,
   View,
-  Modal,
 } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -29,26 +28,9 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [role, setRole] = useState<"developer" | "project_lead" | "admin_lite" | "support_agent" | "head_manager">("developer");
-  const [showRolePicker, setShowRolePicker] = useState(false);
+  const [role, setRole] = useState<"admin" | "manager">("manager");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
-  const roleLabels: Record<string, string> = {
-    developer: "Developer",
-    project_lead: "Project Lead",
-    admin_lite: "Admin Lite",
-    support_agent: "Support Agent",
-    head_manager: "Head Manager",
-  };
-
-  const roleOptions: { value: typeof role; label: string }[] = [
-    { value: "developer", label: "Developer" },
-    { value: "project_lead", label: "Project Lead" },
-    { value: "admin_lite", label: "Admin Lite" },
-    { value: "support_agent", label: "Support Agent" },
-    { value: "head_manager", label: "Head Manager" },
-  ];
 
   const handleSubmit = async () => {
     if (!email.trim() || !password.trim() || (isRegistering && !name.trim())) {
@@ -226,21 +208,35 @@ export default function LoginScreen() {
       fontSize: 14,
       marginLeft: 4,
     },
-    roleSelector: {
+    roleToggleRow: {
+      flexDirection: "row",
+      gap: 12,
+      marginBottom: 16,
+    },
+    roleToggleBtn: {
+      flex: 1,
       flexDirection: "row",
       alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
       backgroundColor: colors.card,
       borderRadius: 12,
       borderWidth: 1.5,
       borderColor: colors.border,
-      marginBottom: 16,
-      paddingHorizontal: 14,
       paddingVertical: 14,
     },
-    roleText: {
-      flex: 1,
+    roleToggleBtnActive: {
+      backgroundColor: colors.primary + "18",
+      borderColor: colors.primary,
+    },
+    roleToggleText: {
       fontSize: 15,
-      color: colors.foreground,
+      fontWeight: "500",
+      color: colors.mutedForeground,
+    },
+    roleToggleTextActive: {
+      color: colors.primary,
+      fontWeight: "700",
     },
   });
 
@@ -275,11 +271,22 @@ export default function LoginScreen() {
               </View>
 
               <Text style={styles.label}>Role</Text>
-              <Pressable style={styles.roleSelector} onPress={() => setShowRolePicker(true)}>
-                <Feather name="briefcase" size={16} color={colors.mutedForeground} style={{ marginRight: 10 }} />
-                <Text style={styles.roleText}>{roleLabels[role]}</Text>
-                <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
-              </Pressable>
+              <View style={styles.roleToggleRow}>
+                <Pressable
+                  style={[styles.roleToggleBtn, role === "admin" && styles.roleToggleBtnActive]}
+                  onPress={() => setRole("admin")}
+                >
+                  <Feather name="shield" size={16} color={role === "admin" ? colors.primary : colors.mutedForeground} />
+                  <Text style={[styles.roleToggleText, role === "admin" && styles.roleToggleTextActive]}>Admin</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.roleToggleBtn, role === "manager" && styles.roleToggleBtnActive]}
+                  onPress={() => setRole("manager")}
+                >
+                  <Feather name="briefcase" size={16} color={role === "manager" ? colors.primary : colors.mutedForeground} />
+                  <Text style={[styles.roleToggleText, role === "manager" && styles.roleToggleTextActive]}>Manager</Text>
+                </Pressable>
+              </View>
             </>
           )}
 

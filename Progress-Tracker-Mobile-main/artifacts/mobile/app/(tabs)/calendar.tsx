@@ -42,7 +42,7 @@ function parseDateKeyOrToday(key: string): Date {
 
 export default function CalendarScreen() {
   const colors = useColors();
-  const { tasks, currentUser, isHeadManager, movePendingToNextDay } = useApp();
+  const { tasks, currentUser, isAdmin, movePendingToNextDay } = useApp();
   const insets = useSafeAreaInsets();
 
   const today = new Date();
@@ -61,9 +61,9 @@ export default function CalendarScreen() {
 
   // Apply RBAC filtering
   const visibleTasks = useMemo(() => {
-    if (isHeadManager && globalView) return tasks;
+    if (isAdmin && globalView) return tasks;
     return tasks.filter(t => t.assigneeId === currentUser?.id);
-  }, [tasks, isHeadManager, globalView, currentUser]);
+  }, [tasks, isAdmin, globalView, currentUser]);
 
   // Group tasks by date key (using dueDate)
   const tasksByDate = useMemo(() => {
@@ -356,14 +356,14 @@ export default function CalendarScreen() {
             <View>
               <Text style={styles.headerTitle}>Calendar</Text>
               <Text style={styles.headerSub}>
-                {isHeadManager ? (globalView ? "All team tasks" : "My tasks only") : "My tasks"}
+                {isAdmin ? (globalView ? "All team tasks" : "My tasks only") : "My tasks"}
               </Text>
             </View>
             <View style={{ flexDirection: "row", gap: 8 }}>
               <Pressable style={styles.todayBtn} onPress={goToToday}>
                 <Text style={styles.todayBtnText}>Today</Text>
               </Pressable>
-              {isHeadManager && (
+              {isAdmin && (
                 <Pressable
                   style={styles.globalToggle}
                   onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setGlobalView(v => !v); }}
@@ -458,7 +458,7 @@ export default function CalendarScreen() {
                   : `${selectedTasks.length} task${selectedTasks.length !== 1 ? "s" : ""} · ${pendingOnSelected.length} pending`}
               </Text>
             </View>
-            {isHeadManager && (
+            {isAdmin && (
               <Pressable
                 style={[styles.todayBtn, { backgroundColor: colors.primary + "15" }]}
                 onPress={() => setShowModal(true)}
@@ -479,7 +479,7 @@ export default function CalendarScreen() {
           )}
 
           {/* Move Pending to Next Day button */}
-          {showMoveButton && isHeadManager && (
+          {showMoveButton && isAdmin && (
             <View style={styles.moveBtnWrap}>
               <Pressable style={styles.moveBtn} onPress={handleMoveToNextDay} disabled={moving}>
                 <View style={styles.moveBtnIcon}>
@@ -506,7 +506,7 @@ export default function CalendarScreen() {
               </View>
               <Text style={styles.emptyTitle}>No tasks scheduled</Text>
               <Text style={styles.emptySub}>Nothing due on this day. Tap below to schedule a task.</Text>
-              {isHeadManager && (
+                {isAdmin && (
                 <Pressable style={styles.emptyCreateBtn} onPress={() => setShowModal(true)}>
                   <Text style={styles.emptyCreateText}>Create a Task</Text>
                 </Pressable>
@@ -549,7 +549,7 @@ export default function CalendarScreen() {
         </Animated.View>
       </ScrollView>
 
-      {isHeadManager && (
+      {isAdmin && (
         <Pressable style={styles.fab} onPress={() => setShowModal(true)}>
           <Feather name="plus" size={22} color={colors.primaryForeground} />
         </Pressable>

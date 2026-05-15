@@ -88,7 +88,7 @@ router.get("/notifications", requireAuth, async (req: Request, res: Response): P
       .order("created_at", { ascending: false })
       .limit(100);
 
-    if (req.user!.role !== "head_manager") {
+    if (req.user!.role !== "admin") {
       query = query.eq("target_user", req.user!.userId);
     }
 

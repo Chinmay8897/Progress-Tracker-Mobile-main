@@ -3,7 +3,7 @@
  *
  * Route path remains `/api/openai/*` for backward compatibility with clients.
  * Internally:
- * - `/transcribe` uses OpenAI Whisper-compatible transcription
+ * - `/transcribe` uses Groq Audio Transcriptions (Whisper-compatible)
  * - `/chat` uses Groq Chat Completions (OpenAI-compatible API surface)
  */
 
@@ -29,25 +29,7 @@ type TranscriptionProviderConfig = {
 };
 
 function getTranscriptionProvider(res: Response): TranscriptionProviderConfig | null {
-  const openaiTranscriptionKey = process.env.OPENAI_TRANSCRIPTION_API_KEY?.trim();
-  const openaiLegacyKey = process.env.OPENAI_API_KEY?.trim();
   const groqKey = process.env.GROQ_API_KEY?.trim();
-
-  if (openaiTranscriptionKey) {
-    return {
-      apiKey: openaiTranscriptionKey,
-      endpoint: "https://api.openai.com/v1/audio/transcriptions",
-      model: "whisper-1",
-    };
-  }
-
-  if (openaiLegacyKey && openaiLegacyKey.startsWith("sk-")) {
-    return {
-      apiKey: openaiLegacyKey,
-      endpoint: "https://api.openai.com/v1/audio/transcriptions",
-      model: "whisper-1",
-    };
-  }
 
   if (groqKey) {
     const groqBaseUrl = (process.env.GROQ_BASE_URL?.trim() || DEFAULT_GROQ_BASE_URL).replace(/\/+$/, "");
@@ -58,16 +40,8 @@ function getTranscriptionProvider(res: Response): TranscriptionProviderConfig | 
     };
   }
 
-  if (!openaiLegacyKey) {
-    res.status(503).json({
-      error: "Transcription provider is not configured. Set OPENAI_TRANSCRIPTION_API_KEY or GROQ_API_KEY in backend .env.",
-    });
-    return null;
-  }
-
-  // OPENAI_API_KEY exists but is likely not an OpenAI key format.
   res.status(503).json({
-    error: "Transcription provider key is invalid for OpenAI. Use OPENAI_TRANSCRIPTION_API_KEY or configure GROQ_API_KEY with GROQ_TRANSCRIPTION_MODEL.",
+    error: "Transcription provider is not configured. Set GROQ_API_KEY in backend .env.",
   });
   return null;
 }

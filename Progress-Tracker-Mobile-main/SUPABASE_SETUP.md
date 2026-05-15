@@ -16,9 +16,10 @@ Apply:
 
 ```text
 supabase/migrations/202605090001_initial_schema.sql
+supabase/migrations/202605120000_device_tokens.sql
 ```
 
-The migration creates:
+The migrations create:
 
 - `users`
 - `tasks`
@@ -26,6 +27,7 @@ The migration creates:
 - `notifications`
 - `voice_logs`
 - `audit_logs`
+- `device_tokens`
 
 It also adds enum types, foreign keys, constraints, indexes, timestamp triggers, RLS policies, and realtime publication entries for `tasks`, `task_assignments`, and `notifications`.
 
@@ -58,8 +60,7 @@ GROQ_API_KEY=your-groq-key
 GROQ_CHAT_MODEL=llama-3.3-70b-versatile
 GROQ_BASE_URL=https://api.groq.com/openai/v1
 GROQ_TRANSCRIPTION_MODEL=whisper-large-v3-turbo
-OPENAI_TRANSCRIPTION_API_KEY=your-openai-key
-ADMIN_EXPO_PUSH_TOKEN=optional-admin-expo-push-token
+
 PORT=3001
 CORS_ORIGINS=http://localhost:8081,http://localhost:19006
 NODE_ENV=development
@@ -98,7 +99,7 @@ This creates Supabase Auth users, profile rows, and sample assignments. Do not r
 ## 7. Security Checklist
 
 - Keep service-role keys backend-only.
-- Keep Groq/OpenAI keys backend-only.
+- Keep Groq keys backend-only.
 - Verify RLS policies after every schema change.
 - Use HTTPS API URLs for production APKs.
 - Configure Supabase Auth email confirmation and password policies.

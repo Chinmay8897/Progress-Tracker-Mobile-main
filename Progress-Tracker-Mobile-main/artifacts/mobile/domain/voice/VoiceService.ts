@@ -4,7 +4,7 @@
  * Two backends:
  * - Web:    Web Speech API (browser-side, no API key needed)
  * - Native: Records audio with expo-av, sends to backend proxy
- *           (backend forwards to OpenAI Whisper — API key is server-side only)
+ *           (backend forwards to Groq Whisper — API key is server-side only)
  *
  * Guards against double-start, cleans up listeners/recording properly,
  * and maps all known error codes to user-friendly messages.

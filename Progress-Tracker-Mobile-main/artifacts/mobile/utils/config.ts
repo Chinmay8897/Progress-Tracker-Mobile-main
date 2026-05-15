@@ -4,10 +4,11 @@
  * All env-dependent values are accessed through this module so that
  * components never reference `process.env` directly.
  *
- * SECURITY: The OpenAI API key is NO LONGER stored here.
+ * SECURITY: The API key is NOT stored here.
  * It lives server-side only in the backend .env file.
  */
 
+import { Platform } from "react-native";
 import Constants from "expo-constants";
 
 function getEnvVar(key: string): string {
@@ -21,9 +22,19 @@ function getEnvVar(key: string): string {
 }
 
 function normalizeApiBaseUrl(url: string): string {
-  const trimmed = url.trim();
+  let trimmed = url.trim();
   if (!trimmed) return "";
-  return trimmed.replace(/\/+$/, "");
+  trimmed = trimmed.replace(/\/+$/, "");
+
+  // Android emulator cannot reach the host machine via "localhost".
+  // Rewrite to 10.0.2.2 (the emulator's special alias for host loopback).
+  if (Platform.OS === "android") {
+    trimmed = trimmed
+      .replace("://localhost", "://10.0.2.2")
+      .replace("://127.0.0.1", "://10.0.2.2");
+  }
+
+  return trimmed;
 }
 
 export const config = {
@@ -39,3 +50,4 @@ export const config = {
   /** Whether the app is running in development mode. */
   isDev: typeof __DEV__ !== "undefined" ? __DEV__ : true,
 } as const;
+

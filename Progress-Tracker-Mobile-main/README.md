@@ -5,7 +5,7 @@ Production React Native + Expo task command app with an Express API and Supabase
 ## Architecture
 
 - `artifacts/mobile`: Expo mobile app using `expo-router`, secure session storage, realtime subscriptions, task/user UI, calendar workflows, voice commands, and WhatsApp sharing.
-- `backend`: Express API that owns privileged Supabase operations, validates input with Zod, protects routes with Supabase Auth sessions, proxies OpenAI transcription/chat requests, and logs audit/notification/voice events.
+- `backend`: Express API that owns privileged Supabase operations, validates input with Zod, protects routes with Supabase Auth sessions, proxies AI transcription/chat requests, and logs audit/notification/voice events.
 - `supabase/migrations`: PostgreSQL schema, constraints, indexes, RLS policies, triggers, and realtime publication setup.
 - `lib/*`: shared API/schema tooling used by the monorepo.
 
@@ -16,7 +16,7 @@ The mobile app does not store production task/user data as the source of truth. 
 - Mobile: Expo, React Native, `expo-router`, `expo-secure-store`, `expo-av`, `expo-notifications`, `@supabase/supabase-js`
 - Backend: Node.js, Express, Supabase Auth, Supabase PostgreSQL, Zod, Helmet, rate limiting
 - Database: Supabase PostgreSQL with RLS
-- Voice: native/web speech capture, backend OpenAI proxy, local command parser/executor, Supabase voice logs
+- Voice: native/web speech capture, backend AI proxy, local command parser/executor, Supabase voice logs
 - WhatsApp: mobile deep links plus backend push-forward support using Supabase-backed users/tasks
 
 ## Setup
@@ -50,7 +50,6 @@ GROQ_API_KEY=your-groq-key
 GROQ_CHAT_MODEL=llama-3.3-70b-versatile
 GROQ_BASE_URL=https://api.groq.com/openai/v1
 GROQ_TRANSCRIPTION_MODEL=whisper-large-v3-turbo
-OPENAI_TRANSCRIPTION_API_KEY=your-openai-key-for-whisper
 PORT=3001
 CORS_ORIGINS=http://localhost:8081,http://localhost:19006
 NODE_ENV=development
@@ -60,9 +59,8 @@ How to get each backend key:
 - `SUPABASE_URL`: Supabase Dashboard -> Project Settings -> API -> Project URL.
 - `SUPABASE_ANON_KEY`: same page -> `anon` `public` key.
 - `SUPABASE_SERVICE_ROLE_KEY`: same page -> `service_role` `secret` key (backend only).
-- `GROQ_API_KEY`: Groq Console -> API Keys -> create key (used for chat/NLP).
-- `OPENAI_TRANSCRIPTION_API_KEY`: optional OpenAI key for Whisper transcription.
-- `GROQ_TRANSCRIPTION_MODEL`: optional; defaults to `whisper-large-v3-turbo` when Groq is used for transcription fallback.
+- `GROQ_API_KEY`: Groq Console -> API Keys -> create key (used for transcription and chat/NLP).
+- `GROQ_TRANSCRIPTION_MODEL`: optional; defaults to `whisper-large-v3-turbo`.
 
 4. Configure mobile environment:
 

@@ -272,7 +272,21 @@ export function WhatsAppIntegrationProvider({ children }: PropsWithChildren) {
   // When the app is completely closed and the user taps a notification,
   // Expo stores the response. On the next cold boot, this hook returns it.
   // It is `null` if the app was launched normally (not via notification tap).
-  const lastNotificationResponse = Notifications.useLastNotificationResponse();
+  //
+  // NOTE: On some Android builds with mismatched expo-notifications versions,
+  // `useLastNotificationResponse` may throw because the native method
+  // `getLastNotificationResponseAsync` is unavailable. We guard against this
+  // by catching and falling back to null.
+  let lastNotificationResponse: Notifications.NotificationResponse | null | undefined = null;
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    lastNotificationResponse = Notifications.useLastNotificationResponse();
+  } catch (err) {
+    console.warn(
+      "[WhatsAppIntegration] useLastNotificationResponse unavailable on this platform — skipping cold-boot handler.",
+      err,
+    );
+  }
 
   useEffect(() => {
     if (lastNotificationResponse) {

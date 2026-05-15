@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { supabaseAdmin } from "../services/supabase/supabaseClient.js";
-import { getUserById } from "../services/supabase/repositories.js";
+import { getUserById, normalizeAppRole } from "../services/supabase/repositories.js";
 
 const AVATAR_COLORS = [
   "#1a6cf5", "#16a34a", "#9333ea", "#dc2626", "#ea580c",
@@ -23,9 +23,22 @@ declare global {
   }
 }
 
+// Simple memory cache to avoid DB hits on every request
+const profileCache = new Map<string, { profile: any; expiresAt: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 async function ensureUserProfile(input: { id: string; email: string; name?: string | null }) {
+  const now = Date.now();
+  const cached = profileCache.get(input.id);
+  if (cached && cached.expiresAt > now) {
+    return cached.profile;
+  }
+
   const existing = await getUserById(input.id);
-  if (existing) return existing;
+  if (existing) {
+    profileCache.set(input.id, { profile: existing, expiresAt: now + CACHE_TTL });
+    return existing;
+  }
 
   const fallbackName = input.name?.trim() || input.email.split("@")[0] || "User";
   const { data, error } = await supabaseAdmin
@@ -36,13 +49,14 @@ async function ensureUserProfile(input: { id: string; email: string; name?: stri
       email: input.email,
       password_hash: null,
       phone_number: null,
-      role: "developer",
+      role: "manager",
       avatar_color: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
     })
     .select("*")
     .single();
 
   if (error) throw error;
+  profileCache.set(input.id, { profile: data, expiresAt: Date.now() + CACHE_TTL });
   return data;
 }
 
@@ -90,14 +104,14 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   next();
 }
 
-export function requireHeadManager(req: Request, res: Response, next: NextFunction): void {
+export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
   if (!req.user) {
     res.status(401).json({ error: "Authentication required" });
     return;
   }
 
-  if (req.user.role !== "head_manager") {
-    res.status(403).json({ error: "Insufficient permissions. Head Manager role required." });
+  if (normalizeAppRole(req.user.role) !== "admin") {
+    res.status(403).json({ error: "Insufficient permissions. Admin role required." });
     return;
   }
 

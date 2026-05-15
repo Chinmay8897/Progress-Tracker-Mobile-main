@@ -23,7 +23,7 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
 export default function TaskDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const colors = useColors();
-  const { tasks, users, deleteTask, isHeadManager, updateTask, moveTaskToDate } = useApp();
+  const { tasks, users, deleteTask, isAdmin, updateTask, moveTaskToDate } = useApp();
   const insets = useSafeAreaInsets();
   const [showEdit, setShowEdit] = useState(false);
   const [showMoveDate, setShowMoveDate] = useState(false);
@@ -184,7 +184,7 @@ export default function TaskDetailScreen() {
               <Pressable style={styles.actionBtn} onPress={handleShare}>
                 <Feather name="share-2" size={15} color={colors.headerForeground} />
               </Pressable>
-              {isHeadManager && (
+              {isAdmin && (
                 <>
                   <Pressable style={styles.actionBtn} onPress={() => setShowEdit(true)}>
                     <Feather name="edit-2" size={15} color={colors.headerForeground} />

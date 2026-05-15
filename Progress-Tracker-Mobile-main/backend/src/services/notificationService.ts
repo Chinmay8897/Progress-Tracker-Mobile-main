@@ -44,21 +44,42 @@ function buildWhatsAppMessage(task: WAForwardTaskDetails): string {
   return lines.join("\n");
 }
 
+import { supabaseAdmin } from "./supabase/supabaseClient.js";
+
 export async function sendWAForwardRequest(
-  adminPushToken: string,
+  adminPushTokens: string[],
   taskDetails: WAForwardTaskDetails,
-): Promise<SendNotificationResult> {
-  if (!Expo.isExpoPushToken(adminPushToken)) {
-    const error = `Invalid Expo push token: "${adminPushToken}"`;
-    console.error(`[NotificationService] ${error}`);
-    return { success: false, error };
+): Promise<{ success: boolean; errors: string[] }> {
+  if (!adminPushTokens || adminPushTokens.length === 0) {
+    return { success: false, errors: ["No push tokens provided"] };
+  }
+
+  const validTokens: string[] = [];
+  const invalidTokens: string[] = [];
+
+  for (const token of adminPushTokens) {
+    if (Expo.isExpoPushToken(token)) {
+      validTokens.push(token);
+    } else {
+      invalidTokens.push(token);
+    }
+  }
+
+  // Cleanup immediately identified invalid tokens
+  if (invalidTokens.length > 0) {
+    console.warn(`[NotificationService] Cleaning up invalid Expo tokens:`, invalidTokens);
+    await supabaseAdmin.from("device_tokens").delete().in("token", invalidTokens);
+  }
+
+  if (validTokens.length === 0) {
+    return { success: false, errors: ["No valid push tokens available"] };
   }
 
   const messageText = buildWhatsAppMessage(taskDetails);
   const phone = taskDetails.assigneePhone.trim();
 
-  const message: ExpoPushMessage = {
-    to: adminPushToken,
+  const messages: ExpoPushMessage[] = validTokens.map(token => ({
+    to: token,
     title: `📤 Forward Task to ${taskDetails.assigneeName}`,
     body: `Tap to open WhatsApp and send the assignment for: "${taskDetails.taskTitle}"`,
     sound: "default",
@@ -72,18 +93,38 @@ export async function sendWAForwardRequest(
       taskTitle: taskDetails.taskTitle,
       assigneeName: taskDetails.assigneeName,
     },
-  };
+  }));
 
-  try {
-    const [ticket] = await expo.sendPushNotificationsAsync([message]);
-    if (ticket.status === "error") {
-      const errDetail = ticket.details?.error ?? "UNKNOWN";
-      return { success: false, ticket, error: `Push failed: ${errDetail}` };
+  const chunks = expo.chunkPushNotifications(messages);
+  const tickets: ExpoPushTicket[] = [];
+  const errors: string[] = [];
+  const staleTokens: string[] = [];
+
+  for (const chunk of chunks) {
+    try {
+      const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
+      tickets.push(...ticketChunk);
+    } catch (error) {
+      console.error("[NotificationService] Error sending chunk:", error);
+      errors.push(String(error));
     }
-    return { success: true, ticket };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { success: false, error: `Unexpected error: ${msg}` };
   }
+
+  // Check for DeviceNotRegistered errors
+  tickets.forEach((ticket, index) => {
+    if (ticket.status === "error") {
+      errors.push(`Push failed: ${ticket.details?.error ?? "UNKNOWN"}`);
+      if (ticket.details && ticket.details.error === "DeviceNotRegistered") {
+        staleTokens.push(messages[index].to as string);
+      }
+    }
+  });
+
+  if (staleTokens.length > 0) {
+    console.warn(`[NotificationService] Cleaning up stale Expo tokens (DeviceNotRegistered):`, staleTokens);
+    await supabaseAdmin.from("device_tokens").delete().in("token", staleTokens);
+  }
+
+  return { success: tickets.some(t => t.status === "ok"), errors };
 }
 

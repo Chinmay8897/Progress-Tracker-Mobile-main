@@ -57,13 +57,13 @@ export default function TaskFormModal({ visible, onClose, editTask, defaultAssig
     { value: "low", label: "Low", color: colors.low },
   ];
 
-  const isHeadManager = currentUser?.role === "head_manager";
+  const isAdmin = currentUser?.role === "admin";
 
   const [title, setTitle] = useState(editTask?.title ?? defaultTitle ?? "");
   const [description, setDescription] = useState(editTask?.description ?? defaultDescription ?? "");
   const [assigneeId, setAssigneeId] = useState(
     editTask?.assigneeId ??
-      (isHeadManager
+      (isAdmin
         ? (defaultAssigneeId ?? users[1]?.id ?? "")
         : (currentUser?.id ?? "")),
   );
@@ -72,7 +72,7 @@ export default function TaskFormModal({ visible, onClose, editTask, defaultAssig
   );
   const [priority, setPriority] = useState<Priority>(editTask?.priority ?? defaultPriority ?? "medium");
   const [status, setStatus] = useState<TaskStatus>(editTask?.status ?? "open");
-  const [tags, setTags] = useState(editTask?.tags.join(", ") ?? "");
+  const [tags, setTags] = useState(editTask?.tags?.join(", ") ?? "");
   const [notes, setNotes] = useState(editTask?.notes ?? "");
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,8 +80,8 @@ export default function TaskFormModal({ visible, onClose, editTask, defaultAssig
   const lastVisibleRef = useRef<boolean>(false);
   const lastEditIdRef = useRef<string | undefined>(editTask?.id);
 
-  const teamMembers = users.filter(u => u.role !== "head_manager");
-  const selectableAssignees = isHeadManager
+  const teamMembers = users;
+  const selectableAssignees = isAdmin
     ? teamMembers
     : teamMembers.filter(u => u.id === currentUser?.id);
 
@@ -127,7 +127,7 @@ export default function TaskFormModal({ visible, onClose, editTask, defaultAssig
 
       setAssigneeId(
         editTask?.assigneeId ??
-          (isHeadManager
+          (isAdmin
             ? defaultAssigneeForNew
             : (currentUser?.id ?? defaultAssigneeForNew)),
       );
@@ -149,7 +149,7 @@ export default function TaskFormModal({ visible, onClose, editTask, defaultAssig
     editTask?.tags,
     editTask?.title,
     initialError,
-    isHeadManager,
+    isAdmin,
     currentUser?.id,
     defaultAssigneeForNew,
     defaultDueForNew,
@@ -189,7 +189,7 @@ export default function TaskFormModal({ visible, onClose, editTask, defaultAssig
       return;
     }
 
-    const resolvedAssigneeId = isHeadManager ? assigneeId : (currentUser?.id ?? assigneeId);
+    const resolvedAssigneeId = isAdmin ? assigneeId : (currentUser?.id ?? assigneeId);
     if (!resolvedAssigneeId) {
       setError("Assignee is required. Please select a team member.");
       return;
@@ -242,7 +242,7 @@ export default function TaskFormModal({ visible, onClose, editTask, defaultAssig
       setError(message);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
-  }, [title, description, assigneeId, dueDate, priority, status, tags, notes, editTask, isHeadManager, currentUser, addTask, updateTask, handleDismiss]);
+  }, [title, description, assigneeId, dueDate, priority, status, tags, notes, editTask, isAdmin, currentUser, addTask, updateTask, handleDismiss]);
 
   const styles = StyleSheet.create({
     overlay: {
