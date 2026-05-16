@@ -73,9 +73,13 @@ export default function AddMemberModal({ visible, onClose }: AddMemberModalProps
       return;
     }
 
-    const phone = phoneNumber.trim();
-    if (phone && !/^\+[1-9]\d{7,14}$/.test(phone)) {
-      setError("Phone number must be E.164 format, for example +919876543210");
+    const phone = phoneNumber.trim().replace(/\D/g, "");
+    if (!phone) {
+      setError("WhatsApp number is required");
+      return;
+    }
+    if (phone.length < 10 || phone.length > 15) {
+      setError("WhatsApp number must be 10-15 digits including country code");
       return;
     }
 
@@ -134,8 +138,8 @@ export default function AddMemberModal({ visible, onClose }: AddMemberModalProps
             <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Jane Smith" placeholderTextColor={colors.mutedForeground} />
             <Text style={styles.label}>Email</Text>
             <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="jane@company.com" placeholderTextColor={colors.mutedForeground} keyboardType="email-address" autoCapitalize="none" />
-            <Text style={styles.label}>Phone Number</Text>
-            <TextInput style={styles.input} value={phoneNumber} onChangeText={setPhoneNumber} placeholder="+919876543210" placeholderTextColor={colors.mutedForeground} keyboardType="phone-pad" autoCapitalize="none" />
+            <Text style={styles.label}>WhatsApp Number</Text>
+            <TextInput style={styles.input} value={phoneNumber} onChangeText={setPhoneNumber} placeholder="e.g. 919876543210" placeholderTextColor={colors.mutedForeground} keyboardType="phone-pad" autoCapitalize="none" />
             <Text style={styles.label}>Password</Text>
             <TextInput style={styles.input} value={password} onChangeText={setPassword} placeholder="Temporary password" placeholderTextColor={colors.mutedForeground} secureTextEntry />
             <Text style={styles.label}>Role</Text>

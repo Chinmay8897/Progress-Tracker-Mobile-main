@@ -11,10 +11,12 @@
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 
-function getEnvVar(key: string): string {
-  const fromProcess = (process.env as Record<string, string | undefined>)[key];
-  if (fromProcess) return fromProcess.trim();
+// We cannot use dynamic `process.env[key]` access because Metro bundler
+// replaces these statically at build time. They must be explicitly written out.
+function getExpoEnvVar(key: string, staticValue: string | undefined): string {
+  if (staticValue) return staticValue.trim();
 
+  // Fallback to Constants.expoConfig.extra if not injected by Metro
   const fromExpoExtra = (Constants.expoConfig as any)?.extra?.[key] as string | undefined;
   if (fromExpoExtra) return fromExpoExtra.trim();
 
@@ -39,13 +41,13 @@ function normalizeApiBaseUrl(url: string): string {
 
 export const config = {
   /** Base URL for the backend API (e.g., http://192.168.1.100:3001). */
-  apiBaseUrl: normalizeApiBaseUrl(getEnvVar("EXPO_PUBLIC_API_BASE_URL")),
+  apiBaseUrl: normalizeApiBaseUrl(getExpoEnvVar("EXPO_PUBLIC_API_BASE_URL", process.env.EXPO_PUBLIC_API_BASE_URL)),
 
   /** Supabase project URL. Safe to expose in Expo public config. */
-  supabaseUrl: getEnvVar("EXPO_PUBLIC_SUPABASE_URL"),
+  supabaseUrl: getExpoEnvVar("EXPO_PUBLIC_SUPABASE_URL", process.env.EXPO_PUBLIC_SUPABASE_URL),
 
   /** Supabase anon key. Safe to expose; database access is still governed by RLS. */
-  supabaseAnonKey: getEnvVar("EXPO_PUBLIC_SUPABASE_ANON_KEY"),
+  supabaseAnonKey: getExpoEnvVar("EXPO_PUBLIC_SUPABASE_ANON_KEY", process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY),
 
   /** Whether the app is running in development mode. */
   isDev: typeof __DEV__ !== "undefined" ? __DEV__ : true,

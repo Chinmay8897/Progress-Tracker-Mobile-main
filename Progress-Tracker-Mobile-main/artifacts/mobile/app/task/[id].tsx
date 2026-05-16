@@ -12,6 +12,9 @@ import { Priority, TaskStatus, useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { parseDateKey, startOfTodayLocal } from "@/utils/date";
 import { shareToWhatsApp } from "@/utils/whatsapp";
+import { WhatsAppService } from "@/services/whatsappService";
+import { formatTaskMessage } from "@/utils/formatTaskMessage";
+import { Alert } from "react-native";
 
 const PRIORITY_LABELS: Record<Priority, string> = {
   critical: "Critical", high: "High", medium: "Medium", low: "Low",
@@ -71,6 +74,38 @@ export default function TaskDetailScreen() {
     ].filter(Boolean) as string[];
 
     await shareToWhatsApp(lines.join("\n"));
+  };
+
+  const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
+
+  const handleWhatsAppShare = () => {
+    if (!assignee) return;
+
+    Alert.alert(
+      "Share via WhatsApp",
+      `Send task to ${assignee.name.split(' ')[0]} on WhatsApp?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Send", 
+          style: "default",
+          onPress: async () => {
+            setSendingWhatsApp(true);
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            
+            try {
+              const message = formatTaskMessage(task);
+              await WhatsAppService.sendMessage(assignee, message);
+            } catch (err: any) {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+              Alert.alert("WhatsApp Error", err.message || "Failed to open WhatsApp.");
+            } finally {
+              setSendingWhatsApp(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleDeleteConfirm = async () => {
@@ -145,6 +180,22 @@ export default function TaskDetailScreen() {
       fontSize: 12,
       fontWeight: "700",
       color: colors.foreground,
+    },
+
+    whatsappBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      backgroundColor: "#25D366",
+      paddingVertical: 12,
+      borderRadius: 10,
+      marginTop: 16,
+    },
+    whatsappText: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: "#fff",
     },
 
     // Inline delete confirmation
@@ -290,6 +341,19 @@ export default function TaskDetailScreen() {
               <Text style={styles.metaLabel}>Created</Text>
               <Text style={styles.metaValue}>{new Date(task.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</Text>
             </View>
+
+            {isAdmin && assignee && (
+              <Pressable 
+                style={[styles.whatsappBtn, sendingWhatsApp && { opacity: 0.7 }]} 
+                onPress={handleWhatsAppShare}
+                disabled={sendingWhatsApp}
+              >
+                <Feather name="message-circle" size={16} color="#fff" />
+                <Text style={styles.whatsappText}>
+                  {sendingWhatsApp ? "Opening..." : "Send via WhatsApp"}
+                </Text>
+              </Pressable>
+            )}
           </View>
         </Animated.View>
 

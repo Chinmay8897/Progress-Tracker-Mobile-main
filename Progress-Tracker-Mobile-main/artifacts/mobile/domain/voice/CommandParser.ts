@@ -58,7 +58,7 @@ export function detectWhatsApp(text: string): boolean {
 
 export function extractAssigneeByPattern(text: string): string | undefined {
   const m = text.match(
-    /\b(?:for|assign(?:\s+it)?\s+to|assigned\s+to)\s+([a-zA-Z]+(?:\s+[a-zA-Z]+){0,2})(?=\s+(?:to|by|due|on|before|with|and|send|notify|share|$))/i,
+    /\b(?:for|assign(?:\s+.*?)?\s+to|assigned\s+to|task\s+to)\s+([a-zA-Z]+(?:\s+[a-zA-Z]+){0,2})(?=\s+(?:to|by|due|on|before|with|and|send|notify|share|$))/i,
   );
   return m?.[1]?.trim();
 }
@@ -103,7 +103,7 @@ function extractTaskTitle(
 
   // Pattern 3: "assign ... <title>"
   const assign = raw.match(
-    /\bassign(?:\s+it)?(?:\s+to\s+[a-zA-Z]+(?:\s+[a-zA-Z]+){0,2})?\s+(.+?)(?=\s+(?:by|due|on|before|with|and|send|notify|share|via)\b|$)/i,
+    /\bassign(?:.*?\s+to\s+[a-zA-Z]+(?:\s+[a-zA-Z]+){0,2})?\s+(.+?)(?=\s+(?:by|due|on|before|with|and|send|notify|share|via)\b|$)/i,
   );
   if (assign?.[1]) return assign[1].trim();
 
@@ -113,7 +113,7 @@ function extractTaskTitle(
 
   if (assignee) {
     const nameRe = new RegExp(
-      `\\b(?:for|assign(?:\\s+it)?\\s+to|assigned\\s+to)\\s+${escapeRe(assignee.split(/\s+/)[0])}\\b`,
+      `\\b(?:for|assign(?:\\s+.*?)?\\s+to|assigned\\s+to|task\\s+to)\\s+${escapeRe(assignee.split(/\\s+/)[0])}\\b`,
       "i",
     );
     cleaned = cleaned.replace(nameRe, " ");

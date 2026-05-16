@@ -226,7 +226,19 @@ export class VoiceService {
       }
 
       const { mimeType, filename } = getMimeType(uri);
-      const text = await transcribeAudio(uri, mimeType, filename);
+      
+      // Abort controller for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+      
+      let text = "";
+      try {
+        text = await transcribeAudio(uri, mimeType, filename, controller.signal);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
+      if (this.disposed || this.status !== "processing") return;
 
       this.cb.onTranscript(text);
 

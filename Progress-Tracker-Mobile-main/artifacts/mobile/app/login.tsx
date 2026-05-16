@@ -28,6 +28,7 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [whatsappNumber, setWhatsappNumber] = useState("");
   const [role, setRole] = useState<"admin" | "manager">("manager");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -37,12 +38,26 @@ export default function LoginScreen() {
       setError(isRegistering ? "Please enter name, email and password" : "Please enter email and password");
       return;
     }
+    
+    let phone = "";
+    if (isRegistering) {
+      phone = whatsappNumber.trim().replace(/\D/g, ""); // Strip non-digits
+      if (!phone) {
+        setError("WhatsApp number is required");
+        return;
+      }
+      if (phone.length < 10 || phone.length > 15) {
+        setError("WhatsApp number must be 10-15 digits including country code");
+        return;
+      }
+    }
+
     setLoading(true);
     setError("");
     try {
       let success = false;
       if (isRegistering) {
-        success = await register(name.trim(), email.trim(), password.trim(), undefined, role);
+        success = await register(name.trim(), email.trim(), password.trim(), phone, role);
       } else {
         success = await login(email.trim(), password.trim());
       }
@@ -267,6 +282,19 @@ export default function LoginScreen() {
                   placeholderTextColor={colors.mutedForeground}
                   autoCapitalize="words"
                   autoCorrect={false}
+                />
+              </View>
+
+              <Text style={styles.label}>WhatsApp Number</Text>
+              <View style={styles.inputWrap}>
+                <Feather name="phone" size={16} color={colors.mutedForeground} style={{ marginRight: 10 }} />
+                <TextInput
+                  style={styles.input}
+                  value={whatsappNumber}
+                  onChangeText={setWhatsappNumber}
+                  placeholder="e.g. 919876543210 (with country code)"
+                  placeholderTextColor={colors.mutedForeground}
+                  keyboardType="phone-pad"
                 />
               </View>
 

@@ -13,7 +13,7 @@
 import type { Priority, Task, User } from "@/context/AppContext";
 import type { DateKey } from "@/utils/date";
 import { todayDateKey, addDaysToDateKey, parseDateKey } from "@/utils/date";
-import { shareToWhatsApp } from "@/utils/whatsapp";
+import { WhatsAppService } from "@/services/whatsappService";
 import type { ParsedCommand, ExecutionResult, MissingField, TaskPrefill } from "./types";
 
 // ─── Execution Context ──────────────────────────────────────────────────────
@@ -174,7 +174,7 @@ async function executeCreateTask(
         `⚡ Priority: ${priorityLabel(priority)}`,
         `📅 Due: ${formatDueLabel(dueDate)}`,
       ].join("\n");
-      await shareToWhatsApp(msg, assignee!.phoneNumber);
+      await WhatsAppService.sendMessage(assignee!, msg);
     } catch {
       // WhatsApp sharing failed but task was created
     }
@@ -266,8 +266,12 @@ async function executeSendWhatsApp(
     ),
   ];
 
-  await shareToWhatsApp(lines.join("\n"), targetUser.phoneNumber);
-  return { kind: "whatsapp_sent", message: `Shared ${userTasks.length} task(s) for ${targetUser.name} on WhatsApp.` };
+  try {
+    await WhatsAppService.sendMessage(targetUser, lines.join("\n"));
+    return { kind: "whatsapp_sent", message: `Shared ${userTasks.length} task(s) for ${targetUser.name} on WhatsApp.` };
+  } catch (err: any) {
+    return { kind: "error", message: err.message || "Failed to send WhatsApp message." };
+  }
 }
 
 // ─── Open Form ──────────────────────────────────────────────────────────────

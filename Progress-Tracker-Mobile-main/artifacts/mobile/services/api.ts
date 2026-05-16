@@ -308,7 +308,7 @@ export const deviceTokensApi = {
  * Upload audio to the backend AI proxy for transcription.
  * Handles automatic token refresh on 401.
  */
-export async function transcribeAudio(uri: string, mimeType: string, filename: string): Promise<string> {
+export async function transcribeAudio(uri: string, mimeType: string, filename: string, signal?: AbortSignal): Promise<string> {
   const baseUrl = config.apiBaseUrl;
   if (!baseUrl) throw new ApiError(0, "API base URL not configured");
 
@@ -328,6 +328,7 @@ export async function transcribeAudio(uri: string, mimeType: string, filename: s
         Authorization: `Bearer ${token}`,
       },
       body: formData,
+      signal,
     });
 
     if (response.status === 401) {
