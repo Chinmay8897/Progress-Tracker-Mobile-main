@@ -74,12 +74,12 @@ export default function AddMemberModal({ visible, onClose }: AddMemberModalProps
     }
 
     const phone = phoneNumber.trim().replace(/\D/g, "");
-    if (!phone) {
-      setError("WhatsApp number is required");
+    if (phone && phone.length !== 10) {
+      setError("Mobile number must be exactly 10 digits");
       return;
     }
-    if (phone.length < 10 || phone.length > 15) {
-      setError("WhatsApp number must be 10-15 digits including country code");
+    if (!phone) {
+      setError("Mobile number is required");
       return;
     }
 
@@ -138,8 +138,37 @@ export default function AddMemberModal({ visible, onClose }: AddMemberModalProps
             <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Jane Smith" placeholderTextColor={colors.mutedForeground} />
             <Text style={styles.label}>Email</Text>
             <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="jane@company.com" placeholderTextColor={colors.mutedForeground} keyboardType="email-address" autoCapitalize="none" />
-            <Text style={styles.label}>WhatsApp Number</Text>
-            <TextInput style={styles.input} value={phoneNumber} onChangeText={setPhoneNumber} placeholder="e.g. 919876543210" placeholderTextColor={colors.mutedForeground} keyboardType="phone-pad" autoCapitalize="none" />
+            <View style={styles.formGroup}>
+            <Text style={styles.label}>Indian Mobile Number</Text>
+            <View style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: colors.background,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 10,
+              paddingHorizontal: 16,
+              marginBottom: 16
+            }}>
+              <Text style={{ fontSize: 15, color: colors.foreground, marginRight: 8, fontWeight: "600" }}>+91</Text>
+              <TextInput
+                style={[styles.input, { borderWidth: 0, backgroundColor: "transparent", paddingHorizontal: 0, flex: 1, marginBottom: 0 }]}
+                value={phoneNumber}
+                onChangeText={(text) => {
+                  let digits = text.replace(/\D/g, "");
+                  if (digits.startsWith("91") && digits.length > 10) {
+                    digits = digits.substring(2);
+                  }
+                  if (digits.length <= 10) setPhoneNumber(digits);
+                }}
+                placeholder="8897425370"
+                placeholderTextColor={colors.mutedForeground}
+                keyboardType="number-pad"
+                autoCapitalize="none"
+                maxLength={10}
+              />
+            </View>
+          </View>
             <Text style={styles.label}>Password</Text>
             <TextInput style={styles.input} value={password} onChangeText={setPassword} placeholder="Temporary password" placeholderTextColor={colors.mutedForeground} secureTextEntry />
             <Text style={styles.label}>Role</Text>

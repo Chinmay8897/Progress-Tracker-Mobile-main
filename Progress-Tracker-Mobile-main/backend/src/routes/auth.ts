@@ -10,6 +10,7 @@ import {
   sanitizeUser,
   type UserRole,
 } from "../services/supabase/repositories.js";
+import { normalizePhoneNumber } from "../utils/normalizePhoneNumber.js";
 
 const router = Router();
 
@@ -32,11 +33,25 @@ const loginSchema = z.object({
   password: z.string().min(1, "Password is required").max(128),
 });
 
+const phoneSchema = z.string().max(32).optional().nullable().transform((val, ctx) => {
+  if (val === undefined) return undefined;
+  if (val === null || val.trim() === "") return null;
+  const normalized = normalizePhoneNumber(val);
+  if (!normalized) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Invalid 10-digit Indian mobile number",
+    });
+    return z.NEVER;
+  }
+  return normalized;
+});
+
 const registerSchema = z.object({
   name: z.string().min(1, "Name is required").max(100).trim(),
   email: z.string().email("Invalid email format").max(255).trim(),
   password: strongPassword,
-  phoneNumber: z.string().max(32).optional(),
+  phoneNumber: phoneSchema,
   role: z.enum(["admin", "manager"]).default("manager"),
 });
 

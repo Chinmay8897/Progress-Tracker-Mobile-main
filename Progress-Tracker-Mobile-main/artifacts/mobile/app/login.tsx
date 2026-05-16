@@ -38,16 +38,16 @@ export default function LoginScreen() {
       setError(isRegistering ? "Please enter name, email and password" : "Please enter email and password");
       return;
     }
-    
+
     let phone = "";
     if (isRegistering) {
       phone = whatsappNumber.trim().replace(/\D/g, ""); // Strip non-digits
       if (!phone) {
-        setError("WhatsApp number is required");
+        setError("Mobile number is required");
         return;
       }
-      if (phone.length < 10 || phone.length > 15) {
-        setError("WhatsApp number must be 10-15 digits including country code");
+      if (phone.length !== 10) {
+        setError("Mobile number must be exactly 10 digits");
         return;
       }
     }
@@ -285,16 +285,24 @@ export default function LoginScreen() {
                 />
               </View>
 
-              <Text style={styles.label}>WhatsApp Number</Text>
+              <Text style={styles.label}>Indian Mobile Number</Text>
               <View style={styles.inputWrap}>
                 <Feather name="phone" size={16} color={colors.mutedForeground} style={{ marginRight: 10 }} />
+                <Text style={{ fontSize: 15, color: colors.foreground, marginRight: 4, fontWeight: "600" }}>+91</Text>
                 <TextInput
                   style={styles.input}
                   value={whatsappNumber}
-                  onChangeText={setWhatsappNumber}
-                  placeholder="e.g. 919876543210 (with country code)"
+                  onChangeText={(text) => {
+                    let digits = text.replace(/\D/g, "");
+                    if (digits.startsWith("91") && digits.length > 10) {
+                      digits = digits.substring(2);
+                    }
+                    if (digits.length <= 10) setWhatsappNumber(digits);
+                  }}
+                  placeholder="8897425370"
                   placeholderTextColor={colors.mutedForeground}
-                  keyboardType="phone-pad"
+                  keyboardType="number-pad"
+                  maxLength={10}
                 />
               </View>
 

@@ -13,6 +13,7 @@ import { config } from "@/utils/config";
 import { getToken, setToken, getRefreshToken, setRefreshToken, clearSession } from "@/services/auth";
 import { setSupabaseSession } from "@/services/supabase/supabaseClient";
 import { logger } from "@/utils/logger";
+import { fetchWithRetry } from "./apiClient";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -76,7 +77,7 @@ async function refreshAccessToken(): Promise<boolean> {
       const baseUrl = config.apiBaseUrl;
       if (!baseUrl) return false;
 
-      const response = await fetch(`${baseUrl}/api/auth/refresh`, {
+      const response = await fetchWithRetry(`${baseUrl}/api/auth/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refreshToken }),
@@ -128,25 +129,20 @@ async function request<T>(method: HttpMethod, path: string, options: RequestOpti
 
   logger.debug("API", `${method} ${path}`);
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 20_000);
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetchWithRetry(url, {
       method,
       headers,
       body: options.body ? JSON.stringify(options.body) : undefined,
-      signal: controller.signal,
     });
   } catch (err) {
     const baseHint = `Cannot reach API at ${baseUrl}.`;
     const isAbort = err instanceof Error && err.name === "AbortError";
     const extra = isAbort
       ? " Request timed out. Check backend server/network."
-      : " Check EXPO_PUBLIC_API_BASE_URL and backend status.";
+      : " Check EXPO_PUBLIC_API_BASE_URL and backend status. Server may still be waking up.";
     throw new ApiError(0, `${baseHint}${extra}`);
-  } finally {
-    clearTimeout(timeoutId);
   }
 
   // Handle 401 — attempt token refresh before giving up
@@ -322,13 +318,12 @@ export async function transcribeAudio(uri: string, mimeType: string, filename: s
       type: mimeType,
     } as any);
 
-    const response = await fetch(`${baseUrl}/api/openai/transcribe`, {
+    const response = await fetchWithRetry(`${baseUrl}/api/openai/transcribe`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
       },
       body: formData,
-      signal,
     });
 
     if (response.status === 401) {
@@ -353,7 +348,7 @@ export async function transcribeAudio(uri: string, mimeType: string, filename: s
       const refreshToken = await getRT();
       if (refreshToken) {
         try {
-          const refreshRes = await fetch(`${baseUrl}/api/auth/refresh`, {
+          const refreshRes = await fetchWithRetry(`${baseUrl}/api/auth/refresh`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ refreshToken }),

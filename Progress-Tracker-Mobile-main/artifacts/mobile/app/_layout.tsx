@@ -20,6 +20,7 @@ import {
   WhatsAppIntegrationProvider,
   registerNotificationHandler,
 } from "@/context/WhatsAppIntegrationProvider";
+import { ColdStartOverlay } from "@/components/ColdStartOverlay";
 
 // ─── Register notification display handler at module load time ────────────────
 // Must be called OUTSIDE of any component to take effect before the first render.
@@ -76,6 +77,11 @@ export default function RootLayout() {
   useEffect(() => {
     if (fontsLoaded || fontError) {
       SplashScreen.hideAsync();
+      
+      // Proactive cold start warmup
+      import("@/services/apiClient").then(({ pingHealthEndpoint }) => {
+        pingHealthEndpoint().catch(() => {});
+      });
     }
   }, [fontsLoaded, fontError]);
 
@@ -96,6 +102,7 @@ export default function RootLayout() {
                     <RootStack />
                   </KeyboardProvider>
                 </GestureHandlerRootView>
+                <ColdStartOverlay />
               </WhatsAppIntegrationProvider>
             </AppProvider>
           </ThemeProvider>

@@ -50,6 +50,17 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
 
+// ─── Health Check (Cold Start Mitigation) ────────────────────────────────────
+// Placed before body parsers and rate limiters for maximum speed
+app.get("/api/health", (req, res) => {
+  console.log(`[Health] Ping received from ${req.ip || "unknown"} - Status: Active`);
+  res.status(200).json({ 
+    status: "ok", 
+    service: "TaskCommand API",
+    timestamp: new Date().toISOString() 
+  });
+});
+
 // Body parsing
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: false }));
@@ -66,10 +77,6 @@ app.use("/api/openai", openaiRoutes);
 app.use("/api", eventRoutes);
 app.use("/api", deviceTokenRoutes);
 
-// Health check
-app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
-});
 
 // ─── 404 Handler ─────────────────────────────────────────────────────────────
 

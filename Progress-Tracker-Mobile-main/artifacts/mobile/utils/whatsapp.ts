@@ -1,4 +1,5 @@
 import { Linking, Share } from "react-native";
+import { normalizePhoneNumber } from "./normalizePhoneNumber";
 
 export interface WhatsAppShareResult {
   method: "whatsapp-app" | "whatsapp-web" | "share-sheet";
@@ -13,7 +14,7 @@ function encode(text: string) {
  */
 export async function shareToWhatsApp(text: string, phoneNumber?: string): Promise<WhatsAppShareResult> {
   const encoded = encode(text);
-  const normalizedPhone = phoneNumber?.replace(/[^\d]/g, "");
+  const normalizedPhone = normalizePhoneNumber(phoneNumber) || undefined;
   const appUrl = normalizedPhone
     ? `whatsapp://send?phone=${normalizedPhone}&text=${encoded}`
     : `whatsapp://send?text=${encoded}`;

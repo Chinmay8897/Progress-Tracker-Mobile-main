@@ -10,6 +10,7 @@ import {
   sanitizeUser,
   type UserRole,
 } from "../services/supabase/repositories.js";
+import { normalizePhoneNumber } from "../utils/normalizePhoneNumber.js";
 
 const router = Router();
 
@@ -18,13 +19,27 @@ const AVATAR_COLORS = [
   "#0891b2", "#ca8a04", "#be185d", "#4f46e5", "#059669",
 ];
 
+const phoneSchema = z.string().max(32).optional().nullable().transform((val, ctx) => {
+  if (val === undefined) return undefined;
+  if (val === null || val.trim() === "") return null;
+  const normalized = normalizePhoneNumber(val);
+  if (!normalized) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Invalid 10-digit Indian mobile number",
+    });
+    return z.NEVER;
+  }
+  return normalized;
+});
+
 const createUserSchema = z.object({
   name: z.string().min(1).max(100).trim(),
   email: z.string().email().max(255).trim(),
   password: z.string().min(8, "Password must be at least 8 characters").max(128),
   role: z.enum(["admin", "manager"]),
   avatarColor: z.string().optional(),
-  phoneNumber: z.string().max(32).optional(),
+  phoneNumber: phoneSchema,
 });
 
 const updateUserSchema = z.object({
@@ -32,7 +47,7 @@ const updateUserSchema = z.object({
   email: z.string().email().max(255).trim().optional(),
   role: z.enum(["admin", "manager"]).optional(),
   avatarColor: z.string().optional(),
-  phoneNumber: z.string().max(32).nullable().optional(),
+  phoneNumber: phoneSchema,
 });
 
 function routeParam(value: string | string[] | undefined): string {

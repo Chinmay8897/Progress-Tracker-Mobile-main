@@ -1,5 +1,6 @@
 import { Linking, Platform } from "react-native";
 import { User } from "../context/AppContext";
+import { normalizePhoneNumber } from "../utils/normalizePhoneNumber";
 
 export class WhatsAppService {
   /**
@@ -8,7 +9,7 @@ export class WhatsAppService {
    */
   static formatPhone(phone?: string): string {
     if (!phone) return "";
-    return phone.replace(/\D/g, "");
+    return normalizePhoneNumber(phone) || "";
   }
 
   /**
