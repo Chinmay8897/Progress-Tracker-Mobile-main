@@ -122,7 +122,7 @@ router.post("/register", registerLimiter, async (req: Request, res: Response): P
         id: createdAuth.data.user.id,
         name,
         email,
-        phoneNumber,
+        phoneNumber: phoneNumber ?? undefined,
         role,
       });
     } catch (err) {
