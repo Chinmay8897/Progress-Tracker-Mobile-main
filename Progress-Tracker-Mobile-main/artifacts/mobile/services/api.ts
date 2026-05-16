@@ -293,83 +293,16 @@ export const notificationsApi = {
 };
 
 export const deviceTokensApi = {
-  register: (token: string, platform?: string) => 
+  register: (token: string, platform?: string) =>
     api.post("/api/device-token", { token, platform }),
 };
 // ─── AI Proxy Helpers ────────────────────────────────────────────────────────
-// All AI requests go through the backend proxy.
+// AI requests go through the backend proxy.
 // Provider keys are NEVER in the client bundle.
-
-/**
- * Upload audio to the backend AI proxy for transcription.
- * Handles automatic token refresh on 401.
- */
-export async function transcribeAudio(uri: string, mimeType: string, filename: string, signal?: AbortSignal): Promise<string> {
-  const baseUrl = config.apiBaseUrl;
-  if (!baseUrl) throw new ApiError(0, "API base URL not configured");
-
-  async function doUpload(): Promise<string> {
-    const token = await getToken();
-
-    const formData = new FormData();
-    formData.append("file", {
-      uri,
-      name: filename,
-      type: mimeType,
-    } as any);
-
-    const response = await fetchWithRetry(`${baseUrl}/api/openai/transcribe`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: formData,
-    });
-
-    if (response.status === 401) {
-      throw new ApiError(401, "Token expired");
-    }
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({ error: "Transcription failed" }));
-      throw new ApiError(response.status, (err as any).error || "Transcription failed");
-    }
-
-    const result = await response.json() as any;
-    return result?.text ?? "";
-  }
-
-  try {
-    return await doUpload();
-  } catch (err) {
-    // On 401, attempt token refresh and retry once
-    if (err instanceof ApiError && err.status === 401) {
-      const { getRefreshToken: getRT, setToken: setT, setRefreshToken: setRT } = await import("@/services/auth");
-      const refreshToken = await getRT();
-      if (refreshToken) {
-        try {
-          const refreshRes = await fetchWithRetry(`${baseUrl}/api/auth/refresh`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ refreshToken }),
-          });
-          if (refreshRes.ok) {
-            const data = await refreshRes.json() as RefreshResponse;
-            await setT(data.token);
-            await setRT(data.refreshToken);
-            await setSupabaseSession(data.token, data.refreshToken);
-            return await doUpload();
-          }
-        } catch {
-          // Refresh failed — fall through
-        }
-      }
-      await clearSession();
-      _onUnauthorized?.();
-    }
-    throw err;
-  }
-}
+//
+// NOTE: Audio transcription has been removed from the API client.
+// Voice commands now use on-device speech recognition (expo-speech-recognition)
+// and only send the recognized TEXT to the backend for parsing.
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -386,10 +319,7 @@ export interface ChatResponse {
  * Keys stay server-side.
  */
 export const openaiApi = {
-  /** Transcribe audio via backend Whisper proxy */
-  transcribe: transcribeAudio,
-
-  /** Chat completions via backend GPT proxy */
+  /** Chat completions via backend Groq proxy */
   chat: (
     messages: ChatMessage[],
     options?: { model?: string; temperature?: number; max_tokens?: number },
@@ -401,3 +331,4 @@ export const openaiApi = {
 };
 
 export const aiApi = openaiApi;
+

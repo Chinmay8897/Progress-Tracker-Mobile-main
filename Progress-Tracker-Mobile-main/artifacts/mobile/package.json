@@ -10,7 +10,7 @@
     "build": "node scripts/build.js",
     "serve": "node server/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "android": "expo start --android",
+    "android": "expo run:android",
     "android:run": "expo run:android",
     "ios": "expo run:ios"
   },
@@ -67,10 +67,15 @@
     "@react-navigation/native": "^7.2.2",
     "@react-navigation/native-stack": "^7.14.12",
     "@supabase/supabase-js": "^2.49.4",
+    "expo": "~54.0.34",
     "expo-av": "~16.0.8",
+    "expo-dev-client": "~6.0.21",
     "expo-notifications": "~0.29.0",
     "expo-secure-store": "~14.0.1",
+    "expo-speech-recognition": "^3.1.3",
     "expo-updates": "~29.0.17",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
     "react-native-url-polyfill": "^2.0.0"
   }
 }

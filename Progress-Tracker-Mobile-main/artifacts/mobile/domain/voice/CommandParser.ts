@@ -16,6 +16,7 @@
 import type { Priority, TaskStatus } from "@/context/AppContext";
 import type { ParsedCommand, ParsedEntities, ParserContext } from "./types";
 import { findDeadlineInText } from "./DateParser";
+import { normalizeTranscript } from "@/utils/normalizeTranscript";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -187,8 +188,9 @@ function detectIntent(lower: string): string {
 // ─── Main Parser ────────────────────────────────────────────────────────────
 
 export function parseCommand(text: string, ctx: ParserContext = {}): ParsedCommand {
-  const rawText = text.trim();
-  if (!rawText) return { intent: "unknown", rawText, entities: { sendWhatsApp: false } };
+  // Normalize device STT output: strip filler words, collapse whitespace, trim
+  const rawText = normalizeTranscript(text);
+  if (!rawText) return { intent: "unknown", rawText: text.trim(), entities: { sendWhatsApp: false } };
 
   const lower = rawText.toLowerCase();
   const now = ctx.now ?? new Date();

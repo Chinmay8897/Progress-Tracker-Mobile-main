@@ -1,17 +1,34 @@
 /**
  * useVoiceCommand — React hook for the voice command pipeline.
  *
- * Orchestrates:
- * 1. Voice capture (VoiceService)
- * 2. Lifecycle management (start/stop/cancel/dispose)
- * 3. State (status, transcript, error)
+ * HYBRID ARCHITECTURE (v2):
+ * Orchestrates on-device speech recognition via expo-speech-recognition
+ * on native platforms and Web Speech API on web.
+ *
+ * Key responsibilities:
+ * 1. Voice capture (VoiceService) with on-device STT
+ * 2. Wiring native speech recognition events to VoiceService
+ * 3. Lifecycle management (start/stop/cancel/dispose)
+ * 4. State (status, transcript, error)
  *
  * The hook ONLY handles speech capture. Command parsing and execution
  * are handled by the parent component via the onResult callback.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Platform } from "react-native";
 import { VoiceService, type VoiceStatus } from "@/domain/voice/VoiceService";
+
+// Conditionally import native event hooks
+let useSpeechRecognitionEvent: any = null;
+if (Platform.OS !== "web") {
+  try {
+    const mod = require("expo-speech-recognition");
+    useSpeechRecognitionEvent = mod.useSpeechRecognitionEvent;
+  } catch {
+    // expo-speech-recognition not available — will fallback gracefully
+  }
+}
 
 export type { VoiceStatus };
 
@@ -47,6 +64,44 @@ export function useVoiceCommand({ onResult, onEnd }: UseVoiceCommandOptions) {
       },
       { maxListenMs: 15_000 },
     );
+  }
+
+  // ── Wire native speech recognition events ───────────────────────────────
+  // expo-speech-recognition uses React hooks for event subscriptions.
+  // These must be called unconditionally (React rules of hooks).
+
+  if (Platform.OS !== "web" && useSpeechRecognitionEvent) {
+    // Result events (interim and final)
+    useSpeechRecognitionEvent("result", (event: any) => {
+      const service = serviceRef.current;
+      if (!service) return;
+
+      const results = event.results;
+      if (!results || results.length === 0) return;
+
+      const latest = results[results.length - 1];
+      const text = latest?.transcript ?? "";
+      const isFinal = latest?.isFinal ?? false;
+
+      service.handleNativeResult(text, isFinal);
+    });
+
+    // Error events
+    useSpeechRecognitionEvent("error", (event: any) => {
+      const service = serviceRef.current;
+      if (!service) return;
+
+      const errorCode = event.error || "unknown";
+      service.handleNativeError(errorCode);
+    });
+
+    // End event (recognition engine stopped)
+    useSpeechRecognitionEvent("end", () => {
+      const service = serviceRef.current;
+      if (!service) return;
+
+      service.handleNativeEnd();
+    });
   }
 
   const isSupported = serviceRef.current.isSupported;

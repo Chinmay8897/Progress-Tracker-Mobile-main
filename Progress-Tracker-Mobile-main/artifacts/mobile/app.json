@@ -20,7 +20,9 @@
         "NSMicrophoneUsageDescription": "TaskCommand needs microphone access to securely record voice commands for AI transcription.",
         "NSSpeechRecognitionUsageDescription": "TaskCommand processes your voice commands into actionable tasks.",
         "ITSAppUsesNonExemptEncryption": false,
-        "LSApplicationQueriesSchemes": ["whatsapp"]
+        "LSApplicationQueriesSchemes": [
+          "whatsapp"
+        ]
       }
     },
     "android": {
@@ -96,9 +98,10 @@
         }
       ],
       [
-        "expo-av",
+        "expo-speech-recognition",
         {
-          "microphonePermission": "TaskCommand needs microphone access to process voice commands."
+          "microphonePermission": "TaskCommand needs microphone access to process voice commands.",
+          "speechRecognitionPermission": "TaskCommand processes your voice commands into actionable tasks."
         }
       ],
       [

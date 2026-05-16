@@ -1,18 +1,23 @@
 /**
- * VoiceService — Speech-to-text capture.
+ * VoiceService — On-device speech-to-text capture.
  *
- * Two backends:
+ * HYBRID ARCHITECTURE (v2):
  * - Web:    Web Speech API (browser-side, no API key needed)
- * - Native: Records audio with expo-av, sends to backend proxy
- *           (backend forwards to Groq Whisper — API key is server-side only)
+ * - Native: expo-speech-recognition (on-device STT, no backend upload)
+ *
+ * Key change from v1:
+ *   Audio is NEVER uploaded to the backend. Speech recognition happens
+ *   entirely on-device. Only the final text transcript is sent to the
+ *   backend for intent parsing and task creation.
  *
  * Guards against double-start, cleans up listeners/recording properly,
  * and maps all known error codes to user-friendly messages.
  */
 
 import { Platform } from "react-native";
-import { Audio } from "expo-av";
-import { transcribeAudio } from "@/services/api";
+import {
+  ExpoSpeechRecognitionModule,
+} from "expo-speech-recognition";
 import type { VoiceStatus, VoiceCaptureCallbacks, VoiceCaptureOptions } from "./types";
 
 // Re-export the status type for consumers.
@@ -24,17 +29,6 @@ function isWebSpeechSupported(): boolean {
     typeof window !== "undefined" &&
     ("SpeechRecognition" in window || "webkitSpeechRecognition" in window)
   );
-}
-
-function getMimeType(uri: string): { mimeType: string; filename: string } {
-  const ext = uri.toLowerCase().match(/\.([a-z0-9]+)(\?|#|$)/)?.[1] ?? "m4a";
-  const map: Record<string, string> = {
-    m4a: "audio/m4a", mp4: "audio/mp4", mp3: "audio/mpeg",
-    wav: "audio/wav", caf: "audio/x-caf", aac: "audio/aac",
-    ogg: "audio/ogg", opus: "audio/opus", webm: "audio/webm",
-    "3gp": "audio/3gpp", "3gpp": "audio/3gpp",
-  };
-  return { mimeType: map[ext] ?? "audio/m4a", filename: `speech.${ext}` };
 }
 
 /** Map all Web Speech API error codes to actionable messages. */
@@ -49,13 +43,25 @@ const WEB_SPEECH_ERRORS: Record<string, string> = {
   "bad-grammar": "Voice recognition encountered an issue. Please try again.",
 };
 
+/** Map native speech recognition error codes to user-friendly messages. */
+const NATIVE_SPEECH_ERRORS: Record<string, string> = {
+  "not-allowed": "Microphone or speech recognition permission denied. Please enable in Settings.",
+  "no-speech": "No speech detected. Please try again or type your command below.",
+  "audio-capture": "Could not access the microphone. Please check your device settings.",
+  "network": "Speech recognition requires a network connection on this device.",
+  "aborted": "Voice recognition was interrupted. Please try again.",
+  "service-not-allowed": "Speech recognition is not available on this device.",
+  "language-not-supported": "Your language is not supported for speech recognition.",
+  "busy": "Speech recognition is currently in use. Please wait and try again.",
+};
+
 export class VoiceService {
-  private recognition: any = null;
-  private recording: Audio.Recording | null = null;
+  private recognition: any = null; // Web SpeechRecognition instance
   private timer: ReturnType<typeof setTimeout> | null = null;
   private status: VoiceStatus = "idle";
   private disposed = false;
   private finishing = false;
+  private nativeListening = false;
 
   private readonly maxListenMs: number;
   private readonly language: string;
@@ -69,7 +75,9 @@ export class VoiceService {
   }
 
   get isSupported(): boolean {
-    return Platform.OS !== "web" || isWebSpeechSupported();
+    if (Platform.OS === "web") return isWebSpeechSupported();
+    // Native: expo-speech-recognition is available on Android and iOS
+    return true;
   }
 
   private setStatus(next: VoiceStatus) {
@@ -102,35 +110,41 @@ export class VoiceService {
   }
 
   private async startNative(): Promise<void> {
-    await this.stopNativeRecording();
+    // Stop any existing session first
+    if (this.nativeListening) {
+      try {
+        ExpoSpeechRecognitionModule.stop();
+      } catch { /* ignore */ }
+      this.nativeListening = false;
+    }
 
     try {
-      const perm = await Audio.requestPermissionsAsync();
-      if (!perm.granted) {
+      // Request permissions
+      const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!result.granted) {
         this.setStatus("error");
-        this.cb.onError("Microphone access denied. Please allow microphone access and try again.");
+        this.cb.onError("Microphone or speech recognition permission denied. Please enable in Settings and try again.");
         this.cb.onEnd?.();
         return;
       }
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
+      // Start speech recognition
+      ExpoSpeechRecognitionModule.start({
+        lang: this.language,
+        interimResults: true,
+        maxAlternatives: 1,
+        continuous: false,
       });
 
-      const rec = new Audio.Recording();
-      await rec.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      await rec.startAsync();
-      this.recording = rec;
-
+      this.nativeListening = true;
       this.setStatus("listening");
 
+      // Auto-stop after timeout
       this.timer = setTimeout(() => void this.finish(), this.maxListenMs);
-    } catch {
+    } catch (err: any) {
       this.setStatus("error");
-      this.cb.onError("Could not start microphone. Please try again.");
+      const msg = err?.message || "Could not start speech recognition. Please try again.";
+      this.cb.onError(msg);
       this.cb.onEnd?.();
     }
   }
@@ -161,7 +175,7 @@ export class VoiceService {
         setTimeout(() => {
           this.setStatus("done");
           this.cb.onEnd?.();
-        }, 600);
+        }, 300);
       }
     };
 
@@ -189,6 +203,62 @@ export class VoiceService {
     }
   }
 
+  // ── Native Event Handlers (called from the hook) ───────────────────────
+
+  /**
+   * Handle native speech recognition result events.
+   * Called by the hook via useSpeechRecognitionEvent.
+   */
+  handleNativeResult(transcript: string, isFinal: boolean): void {
+    if (this.disposed || !this.nativeListening) return;
+
+    this.cb.onTranscript(transcript);
+
+    if (isFinal && transcript.trim()) {
+      this.clearTimer();
+      this.nativeListening = false;
+      this.setStatus("processing");
+      this.cb.onResult(transcript.trim());
+      setTimeout(() => {
+        this.setStatus("done");
+        this.cb.onEnd?.();
+      }, 300);
+    }
+  }
+
+  /**
+   * Handle native speech recognition error events.
+   * Called by the hook via useSpeechRecognitionEvent.
+   */
+  handleNativeError(errorCode: string): void {
+    if (this.disposed) return;
+    this.clearTimer();
+    this.nativeListening = false;
+
+    const msg = NATIVE_SPEECH_ERRORS[errorCode]
+      ?? `Speech recognition failed (${errorCode}). Please type your command below.`;
+    this.cb.onError(msg);
+    this.setStatus("error");
+    this.cb.onEnd?.();
+  }
+
+  /**
+   * Handle native speech recognition end event (called when engine stops).
+   */
+  handleNativeEnd(): void {
+    if (this.disposed) return;
+    this.clearTimer();
+
+    // If we were still in listening state (no final result came),
+    // treat as "no speech detected"
+    if (this.status === "listening" && this.nativeListening) {
+      this.nativeListening = false;
+      this.cb.onError("No speech detected. Please try again or type your command below.");
+      this.setStatus("error");
+      this.cb.onEnd?.();
+    }
+  }
+
   // ── Finish ──────────────────────────────────────────────────────────────
 
   async finish(): Promise<void> {
@@ -202,68 +272,15 @@ export class VoiceService {
       return;
     }
 
-    const rec = this.recording;
-    this.recording = null;
-
-    if (!rec) {
-      this.setStatus("error");
-      this.cb.onError("Recording was not started. Try again.");
-      this.cb.onEnd?.();
-      this.finishing = false;
-      return;
-    }
-
-    this.setStatus("processing");
-
-    try {
-      await rec.stopAndUnloadAsync();
-      const uri = rec.getURI();
-      if (!uri) {
-        this.setStatus("error");
-        this.cb.onError("Could not access the recorded audio.");
-        this.cb.onEnd?.();
-        return;
-      }
-
-      const { mimeType, filename } = getMimeType(uri);
-      
-      // Abort controller for timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
-      
-      let text = "";
+    // Native: stop the speech recognizer — it will deliver the final result
+    // via the event handler
+    if (this.nativeListening) {
       try {
-        text = await transcribeAudio(uri, mimeType, filename, controller.signal);
-      } finally {
-        clearTimeout(timeoutId);
-      }
-
-      if (this.disposed || this.status !== "processing") return;
-
-      this.cb.onTranscript(text);
-
-      if (!text) {
-        this.setStatus("error");
-        this.cb.onError("No speech detected. Please try again.");
-        this.cb.onEnd?.();
-        return;
-      }
-
-      this.cb.onResult(text);
-      setTimeout(() => {
-        this.setStatus("done");
-        this.cb.onEnd?.();
-      }, 600);
-    } catch (err: any) {
-      this.setStatus("error");
-      const detail = err?.message && err.message !== "undefined"
-        ? err.message
-        : "Could not process audio. Please try again or type your command below.";
-      this.cb.onError(detail);
-      this.cb.onEnd?.();
-    } finally {
-      this.finishing = false;
+        ExpoSpeechRecognitionModule.stop();
+      } catch { /* ignore */ }
     }
+
+    this.finishing = false;
   }
 
   // ── Cancel ──────────────────────────────────────────────────────────────
@@ -271,20 +288,18 @@ export class VoiceService {
   async cancel(): Promise<void> {
     this.finishing = false;
     this.clearTimer();
+
+    // Web
     try { this.recognition?.stop(); } catch { /* ignore */ }
-    await this.stopNativeRecording();
-    if (Platform.OS !== "web") {
+
+    // Native
+    if (this.nativeListening) {
       try {
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: false,
-          playsInSilentModeIOS: true,
-          shouldDuckAndroid: true,
-          playThroughEarpieceAndroid: false,
-        });
-      } catch {
-        // ignore audio mode reset failures
-      }
+        ExpoSpeechRecognitionModule.abort();
+      } catch { /* ignore */ }
+      this.nativeListening = false;
     }
+
     this.cb.onTranscript("");
     this.cb.onError("");
     this.setStatus("idle");
@@ -297,7 +312,13 @@ export class VoiceService {
     this.clearTimer();
     try { this.recognition?.abort(); } catch { /* ignore */ }
     this.recognition = null;
-    void this.stopNativeRecording();
+
+    if (this.nativeListening) {
+      try {
+        ExpoSpeechRecognitionModule.abort();
+      } catch { /* ignore */ }
+      this.nativeListening = false;
+    }
   }
 
   // ── Internals ───────────────────────────────────────────────────────────
@@ -306,28 +327,6 @@ export class VoiceService {
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
-    }
-  }
-
-  private async stopNativeRecording(): Promise<void> {
-    const rec = this.recording;
-    this.recording = null;
-    if (!rec) return;
-    try {
-      const s = await rec.getStatusAsync();
-      if (s.isRecording) await rec.stopAndUnloadAsync();
-    } catch { /* ignore */ }
-    if (Platform.OS !== "web") {
-      try {
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: false,
-          playsInSilentModeIOS: true,
-          shouldDuckAndroid: true,
-          playThroughEarpieceAndroid: false,
-        });
-      } catch {
-        // ignore audio mode reset failures
-      }
     }
   }
 }

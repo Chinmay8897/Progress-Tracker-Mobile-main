@@ -2,13 +2,17 @@
  * AI provider proxy.
  *
  * Route path remains `/api/openai/*` for backward compatibility with clients.
- * Internally:
- * - `/transcribe` uses Groq Audio Transcriptions (Whisper-compatible)
+ *
+ * ARCHITECTURE NOTE (v2):
+ * The `/transcribe` endpoint has been REMOVED. Voice commands now use
+ * on-device speech recognition (expo-speech-recognition). Audio is never
+ * uploaded to the backend. Only text commands are sent for parsing.
+ *
+ * Remaining endpoint:
  * - `/chat` uses Groq Chat Completions (OpenAI-compatible API surface)
  */
 
 import { Router, type Request, type Response } from "express";
-import multer from "multer";
 import { z } from "zod";
 import { requireAuth } from "../middleware/auth.js";
 import { openaiLimiter } from "../middleware/rateLimit.js";
@@ -22,30 +26,6 @@ const SUPPORTED_GROQ_MODELS = new Set([
 
 // ─── API Key Guard ───────────────────────────────────────────────────────────
 
-type TranscriptionProviderConfig = {
-  apiKey: string;
-  endpoint: string;
-  model: string;
-};
-
-function getTranscriptionProvider(res: Response): TranscriptionProviderConfig | null {
-  const groqKey = process.env.GROQ_API_KEY?.trim();
-
-  if (groqKey) {
-    const groqBaseUrl = (process.env.GROQ_BASE_URL?.trim() || DEFAULT_GROQ_BASE_URL).replace(/\/+$/, "");
-    return {
-      apiKey: groqKey,
-      endpoint: `${groqBaseUrl}/audio/transcriptions`,
-      model: process.env.GROQ_TRANSCRIPTION_MODEL?.trim() || "whisper-large-v3-turbo",
-    };
-  }
-
-  res.status(503).json({
-    error: "Transcription provider is not configured. Set GROQ_API_KEY in backend .env.",
-  });
-  return null;
-}
-
 function getGroqKey(res: Response): string | null {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
@@ -57,97 +37,7 @@ function getGroqKey(res: Response): string | null {
   return apiKey;
 }
 
-// ─── Transcription (Whisper) ─────────────────────────────────────────────────
-
-// Accept audio uploads up to 25MB (Whisper API limit)
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    const allowed = [
-      "audio/m4a", "audio/mp4", "audio/mpeg", "audio/wav",
-      "audio/x-caf", "audio/aac", "audio/ogg", "audio/opus",
-      "audio/webm", "audio/3gpp", "audio/3gpp2",
-    ];
-    if (allowed.includes(file.mimetype) || file.mimetype.startsWith("audio/")) {
-      cb(null, true);
-    } else {
-      cb(new Error("Only audio files are accepted"));
-    }
-  },
-});
-
-router.post(
-  "/transcribe",
-  requireAuth,
-  openaiLimiter,
-  upload.single("file"),
-  async (req: Request, res: Response): Promise<void> => {
-    try {
-      const provider = getTranscriptionProvider(res);
-      if (!provider) return;
-
-      if (!req.file) {
-        res.status(400).json({ error: "No audio file provided" });
-        return;
-      }
-
-      // Sanitize filename — strip path components, limit length
-      const safeName = (req.file.originalname || "speech.m4a")
-        .replace(/[^a-zA-Z0-9._-]/g, "_")
-        .slice(0, 100);
-
-      // Build multipart form for OpenAI
-      const formData = new FormData();
-      formData.append("model", provider.model);
-      formData.append("response_format", "json");
-      formData.append(
-        "file",
-        new Blob([new Uint8Array(req.file.buffer)], { type: req.file.mimetype }),
-        safeName,
-      );
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30_000);
-      const response = await fetch(provider.endpoint, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${provider.apiKey}`,
-        },
-        body: formData,
-        signal: controller.signal,
-      }).finally(() => clearTimeout(timeoutId));
-
-      if (!response.ok) {
-        let details = "";
-        try {
-          const errJson = await response.json() as any;
-          details = errJson?.error?.message ?? "";
-        } catch {
-          // ignore
-        }
-        console.error(`Transcription provider failed (${response.status}): ${details}`);
-        res.status(response.status >= 500 ? 502 : response.status).json({
-          error: `Transcription failed${details ? `: ${details}` : ""}`,
-        });
-        return;
-      }
-
-      const result = await response.json() as any;
-      res.json({ text: result?.text ?? "" });
-    } catch (err) {
-      const isAbort = err instanceof Error && err.name === "AbortError";
-      if (isAbort) {
-        res.status(504).json({ error: "Transcription request timed out" });
-        return;
-      }
-      console.error("Transcription proxy error:", err);
-      res.status(500).json({ error: "Transcription service unavailable" });
-    }
-  },
-);
-
-// ─── Chat Completions (GPT) ──────────────────────────────────────────────────
+// ─── Chat Completions (Groq LLM) ─────────────────────────────────────────────
 
 const chatMessageSchema = z.object({
   role: z.enum(["system", "user", "assistant"]),
