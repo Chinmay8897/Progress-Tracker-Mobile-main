@@ -20,6 +20,9 @@
       "android": {
         "buildType": "apk"
       },
+      "ios": {
+        "simulator": true
+      },
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://progress-tracker-backend-k0dq.onrender.com",
         "EXPO_PUBLIC_SUPABASE_URL": "https://hqdcpbbvmbuapsdgrlnx.supabase.co",
@@ -31,6 +34,9 @@
       "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
+      },
+      "ios": {
+        "resourceClass": "m1-medium"
       },
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://your-production-api.example.com",
@@ -45,6 +51,11 @@
       "android": {
         "serviceAccountKeyPath": "./google-services.json",
         "track": "internal"
+      },
+      "ios": {
+        "appleId": "your-apple-id@example.com",
+        "ascAppId": "1234567890",
+        "appleTeamId": "XXXXXXXXXX"
       }
     }
   }

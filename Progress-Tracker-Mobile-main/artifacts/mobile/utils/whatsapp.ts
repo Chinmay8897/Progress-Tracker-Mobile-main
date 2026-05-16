@@ -23,19 +23,25 @@ export async function shareToWhatsApp(text: string, phoneNumber?: string): Promi
     : `https://wa.me/?text=${encoded}`;
 
   try {
-    // Prefer the actual app deep link when WhatsApp is installed.
-    await Linking.openURL(appUrl);
-    return { method: "whatsapp-app" };
+    const canOpenApp = await Linking.canOpenURL(appUrl);
+    if (canOpenApp) {
+      await Linking.openURL(appUrl);
+      return { method: "whatsapp-app" };
+    }
   } catch {
     // ignore and try web fallback
   }
 
   try {
-    await Linking.openURL(webUrl);
-    return { method: "whatsapp-web" };
+    const canOpenWeb = await Linking.canOpenURL(webUrl);
+    if (canOpenWeb) {
+      await Linking.openURL(webUrl);
+      return { method: "whatsapp-web" };
+    }
   } catch {
     // Last resort: system share sheet
-    await Share.share({ message: text });
-    return { method: "share-sheet" };
   }
+  
+  await Share.share({ message: text });
+  return { method: "share-sheet" };
 }

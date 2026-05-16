@@ -17,7 +17,10 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.taskcommand.mobile",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "TaskCommand needs microphone access for voice commands."
+        "NSMicrophoneUsageDescription": "TaskCommand needs microphone access to securely record voice commands for AI transcription.",
+        "NSSpeechRecognitionUsageDescription": "TaskCommand processes your voice commands into actionable tasks.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "LSApplicationQueriesSchemes": ["whatsapp"]
       }
     },
     "android": {

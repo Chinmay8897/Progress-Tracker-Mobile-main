@@ -25,22 +25,15 @@ function getExpoEnvVar(key: string, staticValue: string | undefined): string {
 
 function normalizeApiBaseUrl(url: string): string {
   let trimmed = url.trim();
-  if (!trimmed) return "";
-  trimmed = trimmed.replace(/\/+$/, "");
-
-  // Android emulator cannot reach the host machine via "localhost".
-  // Rewrite to 10.0.2.2 (the emulator's special alias for host loopback).
-  if (Platform.OS === "android") {
-    trimmed = trimmed
-      .replace("://localhost", "://10.0.2.2")
-      .replace("://127.0.0.1", "://10.0.2.2");
+  if (!trimmed) {
+    // Default to production Render URL
+    return "https://taskcommand-api.onrender.com";
   }
-
-  return trimmed;
+  return trimmed.replace(/\/+$/, "");
 }
 
 export const config = {
-  /** Base URL for the backend API (e.g., http://192.168.1.100:3001). */
+  /** Base URL for the backend API (e.g., https://taskcommand-api.onrender.com). */
   apiBaseUrl: normalizeApiBaseUrl(getExpoEnvVar("EXPO_PUBLIC_API_BASE_URL", process.env.EXPO_PUBLIC_API_BASE_URL)),
 
   /** Supabase project URL. Safe to expose in Expo public config. */

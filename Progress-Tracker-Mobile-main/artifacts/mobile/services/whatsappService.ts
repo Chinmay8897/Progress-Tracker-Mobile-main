@@ -23,18 +23,24 @@ export class WhatsAppService {
     }
 
     const encodedMessage = encodeURIComponent(message);
-    const url = `https://wa.me/${phone}?text=${encodedMessage}`;
+    const appUrl = `whatsapp://send?phone=${phone}&text=${encodedMessage}`;
+    const webUrl = `https://wa.me/${phone}?text=${encodedMessage}`;
 
     try {
-      const supported = await Linking.canOpenURL(url);
-      if (!supported) {
-        throw new Error("WhatsApp does not seem to be installed or accessible.");
+      const canOpenApp = await Linking.canOpenURL(appUrl);
+      if (canOpenApp) {
+        await Linking.openURL(appUrl);
+        return true;
       }
       
-      await Linking.openURL(url);
-      return true;
+      const canOpenWeb = await Linking.canOpenURL(webUrl);
+      if (canOpenWeb) {
+        await Linking.openURL(webUrl);
+        return true;
+      }
+      
+      throw new Error("WhatsApp does not seem to be installed or accessible.");
     } catch (err: any) {
-      // Re-throw our custom errors, otherwise wrap unknown errors
       if (err.message.includes("does not seem to be") || err.message.includes("valid WhatsApp number")) {
         throw err;
       }
