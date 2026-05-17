@@ -138,7 +138,7 @@ export default function AddMemberModal({ visible, onClose }: AddMemberModalProps
             <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Jane Smith" placeholderTextColor={colors.mutedForeground} />
             <Text style={styles.label}>Email</Text>
             <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="jane@company.com" placeholderTextColor={colors.mutedForeground} keyboardType="email-address" autoCapitalize="none" />
-            <View style={styles.formGroup}>
+            <View>
             <Text style={styles.label}>Indian Mobile Number</Text>
             <View style={{
               flexDirection: "row",

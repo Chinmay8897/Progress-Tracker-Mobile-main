@@ -7,6 +7,7 @@ import {
   getUserById,
   insertAuditLog,
   listUsers,
+  normalizeAppRole,
   sanitizeUser,
   type UserRole,
 } from "../services/supabase/repositories.js";
@@ -202,13 +203,23 @@ router.delete("/:id", requireAuth, requireAdmin, async (req: Request, res: Respo
       return;
     }
 
+    // If deleting another admin, ensure at least one admin remains
+    if (normalizeAppRole(user.role) === "admin") {
+      const allUsers = await listUsers();
+      const adminCount = allUsers.filter(u => normalizeAppRole(u.role) === "admin").length;
+      if (adminCount <= 1) {
+        res.status(400).json({ error: "Cannot delete the last admin. Promote another user first." });
+        return;
+      }
+    }
+
     const { error } = await supabaseAdmin.auth.admin.deleteUser(user.id);
     if (error) {
       res.status(400).json({ error: error.message });
       return;
     }
 
-    await insertAuditLog("users.delete", req.user!.userId, { userId: user.id });
+    await insertAuditLog("users.delete", req.user!.userId, { userId: user.id, deletedRole: user.role });
     res.json({ success: true });
   } catch (err) {
     console.error("Delete user error:", err);
@@ -216,4 +227,72 @@ router.delete("/:id", requireAuth, requireAdmin, async (req: Request, res: Respo
   }
 });
 
+// ─── Role Change (dedicated endpoint) ───────────────────────────────────────
+
+const changeRoleSchema = z.object({
+  role: z.enum(["admin", "manager"]),
+});
+
+router.patch("/:id/role", requireAuth, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const parsed = changeRoleSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid role. Must be 'admin' or 'manager'.", details: parsed.error.flatten().fieldErrors });
+      return;
+    }
+
+    const targetId = routeParam(req.params.id);
+    const newRole = parsed.data.role as UserRole;
+
+    // Prevent self-demotion
+    if (targetId === req.user!.userId && newRole !== "admin") {
+      res.status(400).json({ error: "Cannot demote yourself. Ask another admin to change your role." });
+      return;
+    }
+
+    const target = await getUserById(targetId);
+    if (!target) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    const currentRole = normalizeAppRole(target.role);
+    if (currentRole === newRole) {
+      res.json(sanitizeUser(target, true));
+      return;
+    }
+
+    // If demoting an admin, ensure at least one admin remains
+    if (currentRole === "admin" && newRole === "manager") {
+      const allUsers = await listUsers();
+      const adminCount = allUsers.filter(u => normalizeAppRole(u.role) === "admin").length;
+      if (adminCount <= 1) {
+        res.status(400).json({ error: "Cannot demote the last admin. Promote another user first." });
+        return;
+      }
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("users")
+      .update({ role: newRole, updated_at: new Date().toISOString() })
+      .eq("id", targetId)
+      .select("*")
+      .single();
+
+    if (error) throw error;
+
+    await insertAuditLog("users.role_change", req.user!.userId, {
+      userId: targetId,
+      previousRole: currentRole,
+      newRole,
+    });
+
+    res.json(sanitizeUser(data, true));
+  } catch (err) {
+    console.error("Change role error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export default router;
+

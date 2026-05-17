@@ -61,6 +61,12 @@ export interface ParsedEntities {
   /** For set_filter intent only. */
   filterType?: "priority" | "status";
   filterValue?: string;
+  /** True when assignee resolution found multiple close matches. */
+  assigneeAmbiguous?: boolean;
+  /** Human-readable clarification prompt when ambiguous. */
+  assigneeClarification?: string;
+  /** Candidate names when ambiguous. */
+  assigneeCandidates?: string[];
 }
 
 /** Context supplied to the parser for smarter entity resolution. */

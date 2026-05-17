@@ -105,7 +105,6 @@ export default function VoiceCommandPanel({
 
   const s = StyleSheet.create({
     overlay: {
-      position: "absolute", bottom: 0, left: 0, right: 0,
       backgroundColor: colors.card,
       borderTopLeftRadius: 20, borderTopRightRadius: 20,
       padding: 20,

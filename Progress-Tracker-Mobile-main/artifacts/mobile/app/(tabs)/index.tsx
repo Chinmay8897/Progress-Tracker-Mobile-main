@@ -77,6 +77,10 @@ export default function DashboardScreen() {
     if (statusFilter !== "all") list = list.filter(t => t.status === statusFilter);
     if (assigneeFilter !== "all") list = list.filter(t => t.assigneeId === assigneeFilter);
     return list.sort((a, b) => {
+      // Primary: latest created first
+      const dateCompare = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      if (dateCompare !== 0) return dateCompare;
+      // Secondary: higher priority first (tiebreaker)
       const PO: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
       return (PO[a.priority] ?? 4) - (PO[b.priority] ?? 4);
     });

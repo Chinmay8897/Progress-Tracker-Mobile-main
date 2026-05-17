@@ -8,6 +8,8 @@
  * - send_whatsapp → composes message for a user's tasks, shares
  * - open_form    → returns prefill data for the task form modal
  * - set_filter / clear_filters → returns filter instructions
+ *
+ * v2: Uses improved user resolution with fuzzy matching and ambiguity handling.
  */
 
 import type { Priority, Task, User } from "@/context/AppContext";
@@ -15,6 +17,12 @@ import type { DateKey } from "@/utils/date";
 import { todayDateKey, addDaysToDateKey, parseDateKey } from "@/utils/date";
 import { WhatsAppService } from "@/services/whatsappService";
 import type { ParsedCommand, ExecutionResult, MissingField, TaskPrefill } from "./types";
+import {
+  resolveAssignee,
+  type KnownUser,
+  type AssigneeResolutionResult,
+} from "@/utils/assigneeResolver";
+import { normalizeForComparison } from "@/utils/normalizeTranscript";
 
 // ─── Execution Context ──────────────────────────────────────────────────────
 
@@ -33,21 +41,108 @@ function normalizeName(v: string): string {
   return v.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+/**
+ * Resolve a user from the user list using the new multi-strategy pipeline.
+ *
+ * Strategy priority:
+ * 1. Full resolution pipeline (pattern + fuzzy + ambiguity detection)
+ * 2. Exact full name match (direct)
+ * 3. First name match (direct)
+ * 4. Last name match (direct)
+ * 5. Partial/fuzzy match
+ */
 function resolveUser(users: User[], name: string): User | null {
+  if (!name || users.length === 0) return null;
+
   const needle = normalizeName(name);
   if (!needle) return null;
 
-  // Exact full name
+  // 1. Exact full name match
   const exact = users.find(u => normalizeName(u.name) === needle);
   if (exact) return exact;
 
-  // First name match
-  const first = needle.split(" ")[0];
-  const byFirst = users.find(u => normalizeName(u.name).split(" ")[0] === first);
+  // 2. First name exact match
+  const needleFirst = needle.split(" ")[0];
+  const byFirst = users.find(u => normalizeName(u.name).split(" ")[0] === needleFirst);
   if (byFirst) return byFirst;
 
-  // Includes
-  return users.find(u => normalizeName(u.name).includes(first)) ?? null;
+  // 3. Last name exact match
+  const byLast = users.find(u => {
+    const parts = normalizeName(u.name).split(" ");
+    return parts.length > 1 && parts[parts.length - 1] === needle;
+  });
+  if (byLast) return byLast;
+
+  // 4. Use the full fuzzy resolution pipeline
+  const knownUsers: KnownUser[] = users.map(u => ({ name: u.name }));
+  const resolution = resolveAssignee(name, knownUsers);
+
+  if (resolution.assignee) {
+    const resolved = users.find(u =>
+      normalizeForComparison(u.name) === normalizeForComparison(resolution.assignee!),
+    );
+    if (resolved) return resolved;
+  }
+
+  // 5. Partial match: needle is contained in user name or vice versa
+  const includes = users.find(u => {
+    const un = normalizeName(u.name);
+    return un.includes(needle) || needle.includes(un);
+  });
+  if (includes) return includes;
+
+  return null;
+}
+
+/**
+ * Resolve user from parsed entities, handling ambiguity.
+ * Returns the resolved user and any diagnostic info.
+ */
+interface UserResolutionResult {
+  user: User | null;
+  ambiguous: boolean;
+  clarification?: string;
+  diagnostics: string;
+}
+
+function resolveUserFromEntities(
+  entities: ParsedCommand["entities"],
+  users: User[],
+): UserResolutionResult {
+  if (!entities.assigneeName) {
+    return {
+      user: null,
+      ambiguous: false,
+      diagnostics: "No assignee name extracted from command",
+    };
+  }
+
+  // Check if parser already flagged ambiguity
+  if (entities.assigneeAmbiguous && entities.assigneeClarification) {
+    return {
+      user: null,
+      ambiguous: true,
+      clarification: entities.assigneeClarification,
+      diagnostics: `Ambiguous assignee: ${entities.assigneeCandidates?.join(", ") ?? "unknown candidates"}`,
+    };
+  }
+
+  const user = resolveUser(users, entities.assigneeName);
+
+  if (user) {
+    return {
+      user,
+      ambiguous: false,
+      diagnostics: `Resolved "${entities.assigneeName}" → ${user.name} (id: ${user.id})`,
+    };
+  }
+
+  return {
+    user: null,
+    ambiguous: false,
+    diagnostics: `Could not resolve "${entities.assigneeName}" to any known user. ` +
+      `Available users: [${users.map(u => u.name).join(", ")}]`,
+  };
 }
 
 function findTaskByTitle(tasks: Task[], titleQuery: string): Task | null {
@@ -93,6 +188,15 @@ export async function executeCommand(
 ): Promise<ExecutionResult> {
   const { intent, entities } = cmd;
 
+  // Structured diagnostic logging
+  console.log(
+    `[CommandExecutor] Intent: ${intent} | ` +
+    `Assignee: ${entities.assigneeName ?? "none"} | ` +
+    `Title: ${entities.taskTitle ?? "none"} | ` +
+    `Deadline: ${entities.deadline ?? "none"} | ` +
+    `Priority: ${entities.priority ?? "none"}`,
+  );
+
   switch (intent) {
     case "create_task":
       return executeCreateTask(entities, ctx);
@@ -126,8 +230,30 @@ async function executeCreateTask(
   const title = entities.taskTitle?.trim();
   if (!title) missing.push("title");
 
-  const assignee = entities.assigneeName ? resolveUser(ctx.users, entities.assigneeName) : null;
-  if (!assignee) missing.push("assignee");
+  // Use enhanced user resolution with diagnostics
+  const resolution = resolveUserFromEntities(entities, ctx.users);
+
+  // Log resolution diagnostics
+  console.log(`[CommandExecutor] User resolution: ${resolution.diagnostics}`);
+
+  // Handle ambiguous assignee
+  if (resolution.ambiguous && resolution.clarification) {
+    return {
+      kind: "error",
+      message: `Could not confidently identify assignee. ${resolution.clarification}`,
+    };
+  }
+
+  const assignee = resolution.user;
+  if (!assignee) {
+    missing.push("assignee");
+    if (entities.assigneeName) {
+      console.warn(
+        `[CommandExecutor] Assignee "${entities.assigneeName}" could not be resolved. ` +
+        `${resolution.diagnostics}`,
+      );
+    }
+  }
 
   if (!entities.deadline) missing.push("deadline");
 
@@ -145,11 +271,23 @@ async function executeCreateTask(
   };
 
   if (missing.length > 0) {
+    // Provide more helpful error messages
+    const missingParts: string[] = [];
+    if (missing.includes("title")) missingParts.push("task title");
+    if (missing.includes("assignee")) {
+      if (entities.assigneeName) {
+        missingParts.push(`assignee (could not match "${entities.assigneeName}" to a team member)`);
+      } else {
+        missingParts.push("assignee");
+      }
+    }
+    if (missing.includes("deadline")) missingParts.push("deadline");
+
     return {
       kind: "needs_info",
       missing,
       prefill,
-      message: `Missing ${missing.join(", ")}. Please complete the details.`,
+      message: `Missing ${missingParts.join(", ")}. Please complete the details.`,
     };
   }
 
@@ -246,10 +384,25 @@ async function executeSendWhatsApp(
   entities: ParsedCommand["entities"],
   ctx: ExecutionContext,
 ): Promise<ExecutionResult> {
-  const targetUser = entities.assigneeName ? resolveUser(ctx.users, entities.assigneeName) : null;
+  const resolution = resolveUserFromEntities(entities, ctx.users);
+
+  if (resolution.ambiguous && resolution.clarification) {
+    return {
+      kind: "error",
+      message: `Could not confidently identify the team member. ${resolution.clarification}`,
+    };
+  }
+
+  const targetUser = resolution.user;
 
   if (!targetUser) {
-    return { kind: "error", message: "Could not identify the team member. Try: \"Send tasks to Rahul on WhatsApp\"." };
+    const hint = entities.assigneeName
+      ? ` Could not match "${entities.assigneeName}" to a team member.`
+      : "";
+    return {
+      kind: "error",
+      message: `Could not identify the team member.${hint} Try: "Send tasks to Rahul on WhatsApp".`,
+    };
   }
 
   const userTasks = ctx.tasks.filter(t => t.assigneeId === targetUser.id && t.status !== "done" && t.status !== "cancelled");
@@ -280,14 +433,14 @@ function executeOpenForm(
   entities: ParsedCommand["entities"],
   ctx: ExecutionContext,
 ): ExecutionResult {
-  const assignee = entities.assigneeName ? resolveUser(ctx.users, entities.assigneeName) : null;
+  const resolution = resolveUserFromEntities(entities, ctx.users);
   return {
     kind: "form_opened",
     message: "Opened task form",
     prefill: {
       title: entities.taskTitle,
       description: "",
-      assigneeId: assignee?.id,
+      assigneeId: resolution.user?.id,
       dueDate: entities.deadline,
       priority: entities.priority,
     },

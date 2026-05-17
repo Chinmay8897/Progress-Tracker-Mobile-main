@@ -80,14 +80,14 @@ export default function MemberCard({ user, index = 0 }: MemberCardProps) {
       paddingHorizontal: 8,
       paddingVertical: 2,
       borderRadius: 6,
-      backgroundColor: colors.secondary,
+      backgroundColor: user.role === "admin" ? colors.critical + "18" : colors.secondary,
       marginTop: 3,
       alignSelf: "flex-start",
     },
     roleText: {
       fontSize: 10,
       fontWeight: "600",
-      color: colors.mutedForeground,
+      color: user.role === "admin" ? colors.critical : colors.mutedForeground,
       letterSpacing: 0.3,
     },
     stats: {
@@ -134,7 +134,7 @@ export default function MemberCard({ user, index = 0 }: MemberCardProps) {
             <View style={styles.info}>
               <Text style={styles.name}>{user.name}</Text>
               <View style={styles.roleBadge}>
-                <Text style={styles.roleText}>{ROLE_LABELS[user.role]}</Text>
+                <Text style={styles.roleText}>{user.role === "admin" ? "⚡ " : ""}{ROLE_LABELS[user.role]}</Text>
               </View>
             </View>
             <View style={styles.stats}>

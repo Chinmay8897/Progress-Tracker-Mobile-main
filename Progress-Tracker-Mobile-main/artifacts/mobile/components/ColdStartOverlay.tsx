@@ -13,7 +13,7 @@ export function ColdStartOverlay() {
     const unsubscribe = apiEventEmitter.subscribe((waking) => {
       setIsVisible(waking);
     });
-    return unsubscribe;
+    return () => { unsubscribe(); };
   }, []);
 
   if (!isVisible) return null;

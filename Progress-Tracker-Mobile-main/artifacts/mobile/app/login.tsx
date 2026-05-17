@@ -299,7 +299,7 @@ export default function LoginScreen() {
                     }
                     if (digits.length <= 10) setWhatsappNumber(digits);
                   }}
-                  placeholder="8897425370"
+                  placeholder="1234567890"
                   placeholderTextColor={colors.mutedForeground}
                   keyboardType="number-pad"
                   maxLength={10}

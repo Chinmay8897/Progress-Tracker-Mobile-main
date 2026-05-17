@@ -267,6 +267,8 @@ export const usersApi = {
   update: (id: string, data: Partial<{ name: string; email: string; role: string; avatarColor: string; phoneNumber: string }>) =>
     api.put<ApiUser>(`/api/users/${id}`, data),
   delete: (id: string) => api.delete(`/api/users/${id}`),
+  changeRole: (id: string, role: "admin" | "manager") =>
+    api.patch<ApiUser>(`/api/users/${id}/role`, { role }),
 };
 
 export const tasksApi = {

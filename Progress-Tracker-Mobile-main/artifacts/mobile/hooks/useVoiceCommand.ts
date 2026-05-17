@@ -16,19 +16,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Platform } from "react-native";
+import { useSpeechRecognitionEvent } from "expo-speech-recognition";
 import { VoiceService, type VoiceStatus } from "@/domain/voice/VoiceService";
-
-// Conditionally import native event hooks
-let useSpeechRecognitionEvent: any = null;
-if (Platform.OS !== "web") {
-  try {
-    const mod = require("expo-speech-recognition");
-    useSpeechRecognitionEvent = mod.useSpeechRecognitionEvent;
-  } catch {
-    // expo-speech-recognition not available — will fallback gracefully
-  }
-}
 
 export type { VoiceStatus };
 
@@ -67,42 +56,36 @@ export function useVoiceCommand({ onResult, onEnd }: UseVoiceCommandOptions) {
   }
 
   // ── Wire native speech recognition events ───────────────────────────────
-  // expo-speech-recognition uses React hooks for event subscriptions.
-  // These must be called unconditionally (React rules of hooks).
+  // These hooks must be called unconditionally at the top level of the hook.
+  
+  useSpeechRecognitionEvent("result", (event: any) => {
+    const service = serviceRef.current;
+    if (!service) return;
 
-  if (Platform.OS !== "web" && useSpeechRecognitionEvent) {
-    // Result events (interim and final)
-    useSpeechRecognitionEvent("result", (event: any) => {
-      const service = serviceRef.current;
-      if (!service) return;
+    const results = event.results;
+    if (!results || results.length === 0) return;
 
-      const results = event.results;
-      if (!results || results.length === 0) return;
+    const latest = results[results.length - 1];
+    const text = latest?.transcript ?? "";
+    const isFinal = event.isFinal ?? false;
 
-      const latest = results[results.length - 1];
-      const text = latest?.transcript ?? "";
-      const isFinal = latest?.isFinal ?? false;
+    service.handleNativeResult(text, isFinal);
+  });
 
-      service.handleNativeResult(text, isFinal);
-    });
+  useSpeechRecognitionEvent("error", (event: any) => {
+    const service = serviceRef.current;
+    if (!service) return;
 
-    // Error events
-    useSpeechRecognitionEvent("error", (event: any) => {
-      const service = serviceRef.current;
-      if (!service) return;
+    const errorCode = event.error || "unknown";
+    service.handleNativeError(errorCode);
+  });
 
-      const errorCode = event.error || "unknown";
-      service.handleNativeError(errorCode);
-    });
+  useSpeechRecognitionEvent("end", () => {
+    const service = serviceRef.current;
+    if (!service) return;
 
-    // End event (recognition engine stopped)
-    useSpeechRecognitionEvent("end", () => {
-      const service = serviceRef.current;
-      if (!service) return;
-
-      service.handleNativeEnd();
-    });
-  }
+    service.handleNativeEnd();
+  });
 
   const isSupported = serviceRef.current.isSupported;
 

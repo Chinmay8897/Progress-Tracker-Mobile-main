@@ -16,7 +16,13 @@
 import type { Priority, TaskStatus } from "@/context/AppContext";
 import type { ParsedCommand, ParsedEntities, ParserContext } from "./types";
 import { findDeadlineInText } from "./DateParser";
-import { normalizeTranscript } from "@/utils/normalizeTranscript";
+import { normalizeTranscript, stripHonorifics } from "@/utils/normalizeTranscript";
+import {
+  extractAssigneeByPattern,
+  extractAssigneeFromKnownUsers,
+  resolveAssignee,
+  type AssigneeResolutionResult,
+} from "@/utils/assigneeResolver";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -57,67 +63,62 @@ export function detectWhatsApp(text: string): boolean {
   return /\b(send|notify|share|message|text)\b/.test(l) || /\b(?:on|via)\s+whats\s*app\b/.test(l);
 }
 
-export function extractAssigneeByPattern(text: string): string | undefined {
-  const m = text.match(
-    /\b(?:for|assign(?:\s+.*?)?\s+to|assigned\s+to|task\s+to)\s+([a-zA-Z]+(?:\s+[a-zA-Z]+){0,2})(?=\s+(?:to|by|due|on|before|with|and|send|notify|share|$))/i,
-  );
-  return m?.[1]?.trim();
-}
-
-export function extractAssigneeFromKnownUsers(text: string, users: Array<{ name: string }>): string | undefined {
-  const lower = text.toLowerCase();
-  let best: { name: string; score: number } | null = null;
-
-  for (const u of users) {
-    const full = u.name.trim();
-    if (!full) continue;
-
-    const variants = [full.toLowerCase(), full.split(/\s+/)[0]?.toLowerCase() ?? ""].filter(Boolean);
-
-    for (const v of variants) {
-      if (!new RegExp(`\\b${escapeRe(v)}\\b`, "i").test(lower)) continue;
-      if (!best || v.length > best.score) {
-        best = { name: full, score: v.length };
-      }
-    }
-  }
-
-  return best?.name;
-}
+// Re-export for backward compatibility
+export { extractAssigneeByPattern, extractAssigneeFromKnownUsers };
 
 function extractTaskTitle(
   raw: string,
   assignee?: string,
   deadlineSource?: string,
 ): string | undefined {
-  // Pattern 1: "for Rahul to <title> by ..."
-  const forTo = raw.match(
-    /\bfor\s+[a-zA-Z]+(?:\s+[a-zA-Z]+){0,2}\s+to\s+(.+?)(?=\s+(?:by|due|on|before|with|and|send|notify|share|via)\b|$)/i,
+  // Strip honorifics for cleaner title extraction
+  const cleaned0 = stripHonorifics(raw);
+
+  // Pattern 1: "for <name> to <title> by ..."
+  const forTo = cleaned0.match(
+    /\bfor\s+\S+(?:\s+\S+){0,4}\s+to\s+(.+?)(?=\s+(?:by|due|on|before|with|and|send|notify|share|via)\b|$)/i,
   );
   if (forTo?.[1]) return forTo[1].trim();
 
   // Pattern 2: "task to <title> ..."
-  const taskTo = raw.match(
+  const taskTo = cleaned0.match(
     /\btask\s+to\s+(.+?)(?=\s+(?:by|due|on|before|with|and|send|notify|share|via)\b|$)/i,
   );
   if (taskTo?.[1]) return taskTo[1].trim();
 
   // Pattern 3: "assign ... <title>"
-  const assign = raw.match(
-    /\bassign(?:.*?\s+to\s+[a-zA-Z]+(?:\s+[a-zA-Z]+){0,2})?\s+(.+?)(?=\s+(?:by|due|on|before|with|and|send|notify|share|via)\b|$)/i,
+  const assign = cleaned0.match(
+    /\bassign(?:.*?\s+to\s+\S+(?:\s+\S+){0,4})?\s+(.+?)(?=\s+(?:by|due|on|before|with|and|send|notify|share|via)\b|$)/i,
   );
   if (assign?.[1]) return assign[1].trim();
 
+  // Pattern 4: "tell <name> to <title>"
+  const tell = cleaned0.match(
+    /\btell\s+\S+(?:\s+\S+){0,3}\s+to\s+(.+?)(?=\s+(?:by|due|on|before|with|and|send|notify|share|via)\b|$)/i,
+  );
+  if (tell?.[1]) return tell[1].trim();
+
+  // Pattern 5: "give the <title> task to ..."
+  const giveThe = cleaned0.match(
+    /\bgive\s+the\s+(.+?)\s+task\s+to\b/i,
+  );
+  if (giveThe?.[1]) return giveThe[1].trim();
+
   // Fallback: remove known segments and use what's left
-  let cleaned = raw;
+  let cleaned = cleaned0;
   cleaned = cleaned.replace(/^\s*(please\s+)?(add|create|new|make)\s+(a\s+)?task\b\s*[:\-–,]?\s*/i, "");
 
   if (assignee) {
-    const nameRe = new RegExp(
-      `\\b(?:for|assign(?:\\s+.*?)?\\s+to|assigned\\s+to|task\\s+to)\\s+${escapeRe(assignee.split(/\\s+/)[0])}\\b`,
+    // Remove the assignee name and surrounding trigger words
+    const assigneeTokens = assignee.split(/\s+/).map(t => escapeRe(t));
+    const namePattern = assigneeTokens.join("\\s+");
+    const triggerRemoval = new RegExp(
+      `\\b(?:for|assign(?:\\s+.*?)?\\s+to|assigned\\s+to|task\\s+to|tell|give\\s+to|give\\s+it\\s+to|share\\s+with)\\s+${namePattern}\\b`,
       "i",
     );
-    cleaned = cleaned.replace(nameRe, " ");
+    cleaned = cleaned.replace(triggerRemoval, " ");
+    // Also remove bare name
+    cleaned = cleaned.replace(new RegExp(`\\b${namePattern}\\b`, "i"), " ");
   }
 
   if (deadlineSource) {
@@ -169,7 +170,14 @@ function detectIntent(lower: string): string {
   const hasTask = /\btask\b/.test(lower);
   const hasCreate = /\b(add|create|new|make)\b/.test(lower);
   const hasAssign = /\bassign\b/.test(lower);
+  const hasTell = /\btell\b/.test(lower);
+  const hasGive = /\bgive\b/.test(lower);
   if ((hasTask && (hasCreate || hasAssign)) || (hasAssign && /\bto\b/.test(lower))) {
+    return "create_task";
+  }
+
+  // "Tell <name> to ..." or "Give <name> ..." implies task creation
+  if ((hasTell || hasGive) && /\bto\b/.test(lower)) {
     return "create_task";
   }
 
@@ -207,10 +215,26 @@ export function parseCommand(text: string, ctx: ParserContext = {}): ParsedComma
   const status = extractStatus(rawText);
   const sendWhatsApp = detectWhatsApp(rawText);
 
-  // Resolve assignee
-  const patternAssignee = extractAssigneeByPattern(rawText);
-  const assigneeName = patternAssignee
-    ?? (ctx.knownUsers ? extractAssigneeFromKnownUsers(lower, ctx.knownUsers) : undefined);
+  // ── Resolve assignee using the new multi-strategy pipeline ──
+  let assigneeName: string | undefined;
+  let assigneeResolution: AssigneeResolutionResult | undefined;
+
+  if (ctx.knownUsers && ctx.knownUsers.length > 0) {
+    // Full resolution pipeline: pattern extraction + user matching + fuzzy
+    assigneeResolution = resolveAssignee(rawText, ctx.knownUsers);
+    assigneeName = assigneeResolution.assignee ?? undefined;
+
+    // Log ambiguity for diagnostics (structured log)
+    if (assigneeResolution.ambiguous) {
+      console.warn(
+        `[CommandParser] Ambiguous assignee in: "${rawText}". ` +
+        `Candidates: ${assigneeResolution.candidates.map(c => `${c.name}(${c.confidence.toFixed(2)})`).join(", ")}`,
+      );
+    }
+  } else {
+    // No known users: fall back to pattern-only extraction
+    assigneeName = extractAssigneeByPattern(rawText);
+  }
 
   // Build entities
   const entities: ParsedEntities = {
@@ -220,6 +244,13 @@ export function parseCommand(text: string, ctx: ParserContext = {}): ParsedComma
     status,
     sendWhatsApp,
   };
+
+  // Attach ambiguity info for downstream handling
+  if (assigneeResolution?.ambiguous) {
+    entities.assigneeAmbiguous = true;
+    entities.assigneeClarification = assigneeResolution.clarificationPrompt;
+    entities.assigneeCandidates = assigneeResolution.candidates.map(c => c.name);
+  }
 
   switch (intentRaw) {
     case "create_task": {
