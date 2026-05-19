@@ -248,6 +248,8 @@ export interface ApiTask {
 export const authApi = {
   login: (email: string, password: string) =>
     api.post<LoginResponse>("/api/auth/login", { email, password }, { skipAuth: true }),
+  loginWithGoogle: (idToken: string) =>
+    api.post<LoginResponse>("/api/auth/google", { idToken }, { skipAuth: true }),
   register: (name: string, email: string, password: string, phoneNumber?: string, role?: string) =>
     api.post<RegisterResponse>("/api/auth/register", { name, email, password, phoneNumber, role }, { skipAuth: true }),
   refresh: (refreshToken: string) =>
@@ -257,6 +259,12 @@ export const authApi = {
   changePassword: (currentPassword: string, newPassword: string) =>
     api.post<ChangePasswordResponse>("/api/auth/change-password", { currentPassword, newPassword }),
   me: () => api.get<ApiUser>("/api/auth/me"),
+  forgotPassword: (email: string) =>
+    api.post<{ success: boolean; message: string }>("/api/auth/forgot-password", { email }, { skipAuth: true }),
+  verifyOtp: (email: string, code: string) =>
+    api.post<{ success: boolean; message: string }>("/api/auth/verify-otp", { email, code }, { skipAuth: true }),
+  resetPassword: (email: string, newPassword: string) =>
+    api.post<{ success: boolean; message: string }>("/api/auth/reset-password", { email, newPassword }, { skipAuth: true }),
 };
 
 export const usersApi = {

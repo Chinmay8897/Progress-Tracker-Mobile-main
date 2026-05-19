@@ -12,7 +12,11 @@
         "gradleCommand": ":app:assembleDebug"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://progress-tracker-backend-k0dq.onrender.com"
+        "EXPO_PUBLIC_API_BASE_URL": "https://progress-tracker-backend-k0dq.onrender.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://hqdcpbbvmbuapsdgrlnx.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxZGNwYmJ2bWJ1YXBzZGdybG54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzODA5MzcsImV4cCI6MjA5Mzk1NjkzN30.uldm4k3jB9Gu2TWHBP6ARHqx9FbH-9Je9akSxcXNvng",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "314951192731-1pdgg9t9nkrtume28okuvti3kb5ecekn.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "314951192731-673humsvkafu9ovfk6pgi8sbmp7h0akf.apps.googleusercontent.com"
       }
     },
     "preview": {
@@ -26,7 +30,9 @@
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://progress-tracker-backend-k0dq.onrender.com",
         "EXPO_PUBLIC_SUPABASE_URL": "https://hqdcpbbvmbuapsdgrlnx.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxZGNwYmJ2bWJ1YXBzZGdybG54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzODA5MzcsImV4cCI6MjA5Mzk1NjkzN30.uldm4k3jB9Gu2TWHBP6ARHqx9FbH-9Je9akSxcXNvng"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxZGNwYmJ2bWJ1YXBzZGdybG54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzODA5MzcsImV4cCI6MjA5Mzk1NjkzN30.uldm4k3jB9Gu2TWHBP6ARHqx9FbH-9Je9akSxcXNvng",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "314951192731-1pdgg9t9nkrtume28okuvti3kb5ecekn.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "314951192731-673humsvkafu9ovfk6pgi8sbmp7h0akf.apps.googleusercontent.com"
       },
       "channel": "preview"
     },
@@ -39,9 +45,11 @@
         "resourceClass": "m1-medium"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "http://192.168.1.6:3001",
+        "EXPO_PUBLIC_API_BASE_URL": "https://progress-tracker-backend-k0dq.onrender.com",
         "EXPO_PUBLIC_SUPABASE_URL": "https://hqdcpbbvmbuapsdgrlnx.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxZGNwYmJ2bWJ1YXBzZGdybG54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzODA5MzcsImV4cCI6MjA5Mzk1NjkzN30.uldm4k3jB9Gu2TWHBP6ARHqx9FbH-9Je9akSxcXNvng"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxZGNwYmJ2bWJ1YXBzZGdybG54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzODA5MzcsImV4cCI6MjA5Mzk1NjkzN30.uldm4k3jB9Gu2TWHBP6ARHqx9FbH-9Je9akSxcXNvng",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "314951192731-1pdgg9t9nkrtume28okuvti3kb5ecekn.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "314951192731-673humsvkafu9ovfk6pgi8sbmp7h0akf.apps.googleusercontent.com"
       },
       "channel": "production"
     }

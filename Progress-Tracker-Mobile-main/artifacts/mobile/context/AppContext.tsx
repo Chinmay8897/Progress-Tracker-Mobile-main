@@ -71,6 +71,7 @@ interface AppContextType {
   users: User[];
   tasks: Task[];
   login: (email: string, password: string) => Promise<boolean>;
+  loginWithGoogle: (idToken: string) => Promise<boolean>;
   register: (name: string, email: string, password: string, phoneNumber?: string, role?: UserRole) => Promise<boolean>;
   logout: () => void;
   addTask: (task: Omit<Task, "id" | "createdAt" | "updatedAt">) => Promise<void>;
@@ -336,6 +337,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // ── Auth ──────────────────────────────────────────────────────────────────
 
+  const loginWithGoogle = useCallback(async (idToken: string): Promise<boolean> => {
+    try {
+      const response = await authApi.loginWithGoogle(idToken);
+      await setToken(response.token);
+      await setRefreshToken(response.refreshToken);
+      await setSupabaseSession(response.token, response.refreshToken);
+
+      const user = apiUserToUser(response.user);
+      await setStoredUser(user as StoredUser);
+      setCurrentUser(user);
+
+      await fetchAllData();
+      void registerDeviceToken();
+
+      return true;
+    } catch (err) {
+      if (err instanceof ApiError) {
+        logger.warn("AppContext", `Google login failed: ${err.message}`);
+        throw new Error(err.message || "Google authentication failed");
+      }
+      throw err;
+    }
+  }, []);
+
   const login = useCallback(async (email: string, password: string): Promise<boolean> => {
     try {
       const response = await authApi.login(email, password);
@@ -384,10 +409,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         // Combine field errors if present
         let errorMsg = err.message || "Registration failed";
         if (err.details) {
-            const detailsList = Object.values(err.details).flat();
-            if (detailsList.length > 0) {
-                errorMsg = detailsList[0]; // Just take the first validation error
-            }
+          const detailsList = Object.values(err.details).flat();
+          if (detailsList.length > 0) {
+            errorMsg = detailsList[0]; // Just take the first validation error
+          }
         }
         throw new Error(errorMsg);
       }
@@ -607,6 +632,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     users,
     tasks,
     login,
+    loginWithGoogle,
     register,
     logout,
     addTask,
@@ -624,7 +650,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     refreshData,
   }), [
     currentUser, users, tasks,
-    login, register, logout,
+    login, loginWithGoogle, register, logout,
     addTask, updateTask, moveTaskToDate, deleteTask,
     addUser, updateUser, deleteUser,
     getTasksForUser, movePendingToNextDay,

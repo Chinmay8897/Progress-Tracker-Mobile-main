@@ -27,7 +27,7 @@ declare global {
 const profileCache = new Map<string, { profile: any; expiresAt: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-async function ensureUserProfile(input: { id: string; email: string; name?: string | null }) {
+export async function ensureUserProfile(input: { id: string; email: string; name?: string | null }) {
   const now = Date.now();
   const cached = profileCache.get(input.id);
   if (cached && cached.expiresAt > now) {

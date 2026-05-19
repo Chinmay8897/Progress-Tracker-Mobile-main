@@ -3,21 +3,13 @@ import { z } from "zod";
 import { authLimiter, registerLimiter } from "../middleware/rateLimit.js";
 import { requireAuth } from "../middleware/auth.js";
 import { supabaseAdmin, supabaseAuthClient } from "../services/supabase/supabaseClient.js";
-import {
-  getUserByEmail,
-  getUserById,
-  insertAuditLog,
-  sanitizeUser,
-  type UserRole,
-} from "../services/supabase/repositories.js";
+import { getUserById, insertAuditLog, sanitizeUser } from "../services/supabase/repositories.js";
 import { normalizePhoneNumber } from "../utils/normalizePhoneNumber.js";
+import { authService } from "../services/authService.js";
+import { googleTokenVerificationService } from "../services/googleTokenVerificationService.js";
+import { otpService } from "../services/otpService.js";
 
 const router = Router();
-
-const AVATAR_COLORS = [
-  "#1a6cf5", "#16a34a", "#9333ea", "#dc2626", "#ea580c",
-  "#0891b2", "#ca8a04", "#be185d", "#4f46e5", "#059669",
-];
 
 const strongPassword = z
   .string()
@@ -64,31 +56,40 @@ const changePasswordSchema = z.object({
   newPassword: strongPassword,
 });
 
-async function createProfile(input: {
-  id: string;
-  name: string;
-  email: string;
-  role: UserRole;
-  phoneNumber?: string;
-  avatarColor?: string;
-}) {
-  const { data, error } = await supabaseAdmin
-    .from("users")
-    .insert({
-      id: input.id,
-      name: input.name,
-      email: input.email,
-      password_hash: null,
-      phone_number: input.phoneNumber ?? null,
-      role: input.role,
-      avatar_color: input.avatarColor ?? AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
-    })
-    .select("*")
-    .single();
+const forgotPasswordSchema = z.object({
+  email: z.string().email("Invalid email format").max(255).trim(),
+});
 
-  if (error) throw error;
-  return data;
-}
+const verifyOtpSchema = z.object({
+  email: z.string().email("Invalid email format").max(255).trim(),
+  code: z.string().length(6, "OTP must be 6 digits"),
+});
+
+const resetPasswordSchema = z.object({
+  email: z.string().email("Invalid email format").max(255).trim(),
+  newPassword: strongPassword,
+});
+
+// --- GOOGLE AUTHENTICATION ---
+
+router.post("/google", authLimiter, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { idToken } = req.body;
+    if (!idToken || typeof idToken !== "string") {
+      res.status(400).json({ error: "Google ID Token is required" });
+      return;
+    }
+
+    const sessionData = await googleTokenVerificationService.verifyAndSync(idToken);
+    await insertAuditLog("auth.google_login", sessionData.user.id, { email: sessionData.user.email });
+    res.json(sessionData);
+  } catch (err: any) {
+    console.error("Google login error:", err);
+    res.status(401).json({ error: err.message || "Authentication failed" });
+  }
+});
+
+// --- STANDARD AUTHENTICATION ---
 
 router.post("/register", registerLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -97,55 +98,12 @@ router.post("/register", registerLimiter, async (req: Request, res: Response): P
       res.status(400).json({ error: "Validation failed", details: parsed.error.flatten().fieldErrors });
       return;
     }
-
     const { name, email, password, phoneNumber, role } = parsed.data;
-    const existing = await getUserByEmail(email);
-    if (existing) {
-      res.status(409).json({ error: "Registration failed. An account with this email may already exist." });
-      return;
-    }
-
-    const createdAuth = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: { name },
-    });
-    if (createdAuth.error || !createdAuth.data.user?.id) {
-      res.status(400).json({ error: createdAuth.error?.message ?? "Registration failed" });
-      return;
-    }
-
-    let profile;
-    try {
-      profile = await createProfile({
-        id: createdAuth.data.user.id,
-        name,
-        email,
-        phoneNumber: phoneNumber ?? undefined,
-        role,
-      });
-    } catch (err) {
-      await supabaseAdmin.auth.admin.deleteUser(createdAuth.data.user.id);
-      throw err;
-    }
-
-    const signedIn = await supabaseAuthClient.auth.signInWithPassword({ email, password });
-    if (signedIn.error || !signedIn.data.session) {
-      await supabaseAdmin.auth.admin.deleteUser(createdAuth.data.user.id);
-      res.status(502).json({ error: signedIn.error?.message ?? "Registration completed but session could not be established" });
-      return;
-    }
-
-    await insertAuditLog("auth.register", createdAuth.data.user.id, { email });
-    res.status(201).json({
-      token: signedIn.data.session.access_token,
-      refreshToken: signedIn.data.session.refresh_token,
-      user: sanitizeUser(profile, true),
-    });
-  } catch (err) {
+    const sessionData = await authService.register(name, email, password, phoneNumber, role);
+    res.status(201).json(sessionData);
+  } catch (err: any) {
     console.error("Register error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(err.message.includes("exist") ? 409 : 400).json({ error: err.message || "Registration failed" });
   }
 });
 
@@ -156,31 +114,68 @@ router.post("/login", authLimiter, async (req: Request, res: Response): Promise<
       res.status(400).json({ error: "Validation failed", details: parsed.error.flatten().fieldErrors });
       return;
     }
-
     const { email, password } = parsed.data;
-    const signedIn = await supabaseAuthClient.auth.signInWithPassword({ email, password });
-    if (signedIn.error || !signedIn.data.session || !signedIn.data.user?.id) {
-      res.status(401).json({ error: "Invalid email or password" });
-      return;
-    }
-
-    const profile = await getUserById(signedIn.data.user.id);
-    if (!profile) {
-      res.status(401).json({ error: "User profile is missing" });
-      return;
-    }
-
-    await insertAuditLog("auth.login", profile.id, { email: profile.email });
-    res.json({
-      token: signedIn.data.session.access_token,
-      refreshToken: signedIn.data.session.refresh_token,
-      user: sanitizeUser(profile, true),
-    });
-  } catch (err) {
+    const sessionData = await authService.login(email, password);
+    res.json(sessionData);
+  } catch (err: any) {
     console.error("Login error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(401).json({ error: err.message || "Invalid email or password" });
   }
 });
+
+// --- PASSWORD RECOVERY ---
+
+router.post("/forgot-password", authLimiter, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const parsed = forgotPasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid email" });
+      return;
+    }
+    await otpService.generateAndSendOtp(parsed.data.email);
+    res.json({ success: true, message: "If that email is registered, an OTP has been sent." });
+  } catch (err: any) {
+    console.error("Forgot password error:", err);
+    res.status(429).json({ error: err.message || "Too many requests" });
+  }
+});
+
+router.post("/verify-otp", authLimiter, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const parsed = verifyOtpSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid request payload" });
+      return;
+    }
+    otpService.verifyOtp(parsed.data.email, parsed.data.code);
+    res.json({ success: true, message: "OTP verified successfully." });
+  } catch (err: any) {
+    res.status(401).json({ error: err.message || "Invalid OTP" });
+  }
+});
+
+router.post("/reset-password", authLimiter, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const parsed = resetPasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Validation failed", details: parsed.error.flatten().fieldErrors });
+      return;
+    }
+    const { email, newPassword } = parsed.data;
+    if (!otpService.isVerified(email)) {
+      res.status(403).json({ error: "Unauthorized. You must verify your OTP first." });
+      return;
+    }
+    await authService.resetPassword(email, newPassword);
+    otpService.clearOtp(email);
+    res.json({ success: true, message: "Password has been successfully reset." });
+  } catch (err: any) {
+    console.error("Reset password error:", err);
+    res.status(400).json({ error: err.message || "Failed to reset password" });
+  }
+});
+
+// --- SESSION MANAGEMENT ---
 
 router.post("/refresh", async (req: Request, res: Response): Promise<void> => {
   try {
@@ -189,7 +184,6 @@ router.post("/refresh", async (req: Request, res: Response): Promise<void> => {
       res.status(400).json({ error: "Refresh token is required" });
       return;
     }
-
     const refreshed = await supabaseAuthClient.auth.refreshSession({
       refresh_token: parsed.data.refreshToken,
     });
@@ -197,13 +191,11 @@ router.post("/refresh", async (req: Request, res: Response): Promise<void> => {
       res.status(401).json({ error: "Invalid refresh token" });
       return;
     }
-
     const profile = await getUserById(refreshed.data.user.id);
     if (!profile) {
       res.status(401).json({ error: "User no longer exists" });
       return;
     }
-
     res.json({
       token: refreshed.data.session.access_token,
       refreshToken: refreshed.data.session.refresh_token,
@@ -233,13 +225,11 @@ router.post("/change-password", requireAuth, async (req: Request, res: Response)
       res.status(400).json({ error: "Validation failed", details: parsed.error.flatten().fieldErrors });
       return;
     }
-
     const profile = await getUserById(req.user!.userId);
     if (!profile) {
       res.status(404).json({ error: "User not found" });
       return;
     }
-
     const check = await supabaseAuthClient.auth.signInWithPassword({
       email: profile.email,
       password: parsed.data.currentPassword,
@@ -248,7 +238,6 @@ router.post("/change-password", requireAuth, async (req: Request, res: Response)
       res.status(401).json({ error: "Current password is incorrect" });
       return;
     }
-
     const updated = await supabaseAdmin.auth.admin.updateUserById(profile.id, {
       password: parsed.data.newPassword,
     });
@@ -256,7 +245,6 @@ router.post("/change-password", requireAuth, async (req: Request, res: Response)
       res.status(400).json({ error: updated.error.message });
       return;
     }
-
     const signedIn = await supabaseAuthClient.auth.signInWithPassword({
       email: profile.email,
       password: parsed.data.newPassword,
@@ -265,7 +253,6 @@ router.post("/change-password", requireAuth, async (req: Request, res: Response)
       res.status(200).json({ message: "Password changed successfully" });
       return;
     }
-
     await insertAuditLog("auth.change_password", profile.id);
     res.json({
       token: signedIn.data.session.access_token,

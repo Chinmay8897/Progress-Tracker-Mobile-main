@@ -36,17 +36,7 @@
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.POST_NOTIFICATIONS",
-        "android.permission.QUERY_ALL_PACKAGES",
-        "android.permission.RECORD_AUDIO",
-        "INTERNET",
-        "ACCESS_NETWORK_STATE",
-        "RECORD_AUDIO",
-        "VIBRATE",
-        "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.RECEIVE_BOOT_COMPLETED",
-        "android.permission.POST_NOTIFICATIONS",
-        "android.permission.QUERY_ALL_PACKAGES",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.QUERY_ALL_PACKAGES"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
@@ -111,6 +101,9 @@
           "image": "./assets/images/icon.png",
           "imageWidth": 200
         }
+      ],
+      [
+        "@react-native-google-signin/google-signin"
       ]
     ],
     "experiments": {
