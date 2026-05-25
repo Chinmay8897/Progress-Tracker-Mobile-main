@@ -31,7 +31,7 @@ export async function ensureUserProfile(input: { id: string; email: string; name
   const now = Date.now();
   const cached = profileCache.get(input.id);
   if (cached && cached.expiresAt > now) {
-    return cached.profile;
+    return { profile: cached.profile, isNewUser: false };
   }
 
   const existing = await getUserById(input.id);

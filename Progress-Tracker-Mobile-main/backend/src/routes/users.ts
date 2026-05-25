@@ -213,6 +213,18 @@ router.delete("/:id", requireAuth, requireAdmin, async (req: Request, res: Respo
       }
     }
 
+    // Check if the user has created any tasks (prevent ON DELETE RESTRICT error)
+    const { count, error: countError } = await supabaseAdmin
+      .from("tasks")
+      .select("*", { count: "exact", head: true })
+      .eq("created_by", user.id);
+
+    if (countError) throw countError;
+    if (count && count > 0) {
+      res.status(400).json({ error: "Cannot delete user because they have created tasks. Please delete or reassign their tasks first." });
+      return;
+    }
+
     const { error } = await supabaseAdmin.auth.admin.deleteUser(user.id);
     if (error) {
       res.status(400).json({ error: error.message });

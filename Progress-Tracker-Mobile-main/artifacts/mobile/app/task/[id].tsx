@@ -110,9 +110,15 @@ export default function TaskDetailScreen() {
 
   const handleDeleteConfirm = async () => {
     setDeleting(true);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    await deleteTask(task.id);
-    router.back();
+    try {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      await deleteTask(task.id);
+      router.back();
+    } catch (err: any) {
+      setDeleting(false);
+      setConfirmingDelete(false);
+      Alert.alert("Error", err.message || "Failed to delete task");
+    }
   };
 
   const quickStatus = async (s: TaskStatus) => {

@@ -245,6 +245,7 @@ router.delete("/:id", requireAuth, requireAdmin, async (req: Request, res: Respo
       return;
     }
 
+    await supabaseAdmin.from("task_assignments").delete().eq("task_id", task.id);
     const { error } = await supabaseAdmin.from("tasks").delete().eq("id", task.id);
     if (error) throw error;
 
