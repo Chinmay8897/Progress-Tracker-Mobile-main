@@ -17,6 +17,7 @@ export const AiIntentSchema = z.object({
   priority: z.enum(["critical", "high", "medium", "low"]).nullable().optional(),
   assignee: z.string().nullable().optional(),
   deadline: z.string().nullable().optional(),
+  status: z.enum(["open", "in_progress", "blocked", "done", "cancelled"]).nullable().optional(),
   share_whatsapp: z.boolean().nullable().optional(),
 });
 

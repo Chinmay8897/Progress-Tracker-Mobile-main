@@ -194,12 +194,13 @@ export default function DashboardScreen() {
         metadata: { resultKind: result.kind },
       }).catch(() => undefined);
       Haptics.notificationAsync(haptic);
-    } catch {
+    } catch (err) {
       void voiceLogsApi.log({
         rawCommand: cmd.rawText,
         parsedIntent: cmd.intent,
         executionStatus: "failed",
       }).catch(() => undefined);
+      console.error("Voice Command Error:", err);
       setActionTaken("Something went wrong. Please try again.");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {

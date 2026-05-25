@@ -21,7 +21,7 @@ import { useColors } from "@/hooks/useColors";
 export default function CompleteProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { currentUser, updatePhone, logout } = useApp();
+  const { currentUser, updateProfile, logout } = useApp();
 
   const [whatsappNumber, setWhatsappNumber] = useState("");
   const [loading, setLoading] = useState(false);
@@ -42,7 +42,7 @@ export default function CompleteProfileScreen() {
     setLoading(true);
     setError("");
     try {
-      await updatePhone(phone);
+      await updateProfile({ phoneNumber: phone });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace("/(tabs)");
     } catch (err: any) {

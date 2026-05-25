@@ -1,6 +1,7 @@
 import { openaiApi } from "@/services/api";
 import { validateAiIntent, type AiIntentResponse } from "@/utils/validateAiResponse";
 import type { ParsedCommand, ParsedEntities } from "@/domain/voice/types";
+import { parseDatePhrase } from "@/domain/voice/DateParser";
 
 const SYSTEM_PROMPT = `
 You are a highly capable Natural Language Understanding (NLU) assistant for a task management application called "TaskCommand".
@@ -31,6 +32,7 @@ Output Schema:
   "priority": "critical|high|medium|low or null",
   "assignee": "extracted person's name or null",
   "deadline": "extracted deadline/timeframe or null",
+  "status": "open|in_progress|blocked|done|cancelled or null",
   "share_whatsapp": true|false|null
 }
 `;
@@ -65,13 +67,26 @@ export async function extractIntentWithAI(
 }
 
 function mapAiResponseToParsedCommand(rawText: string, aiData: AiIntentResponse): ParsedCommand {
+  let deadline = aiData.deadline || undefined;
+  if (deadline) {
+    const normalized = parseDatePhrase(deadline);
+    if (normalized) {
+      deadline = normalized;
+    } else {
+      // If DateParser couldn't understand it, we just let it fall through 
+      // or try to extract from the raw text as a fallback.
+      const fallback = parseDatePhrase(rawText);
+      if (fallback) deadline = fallback;
+    }
+  }
+
   const entities: ParsedEntities = {
     taskTitle: aiData.task_title || undefined,
     assigneeName: aiData.assignee || undefined,
     priority: aiData.priority || undefined,
-    deadline: aiData.deadline || undefined,
+    deadline,
     sendWhatsApp: aiData.share_whatsapp || false,
-    status: undefined, // default
+    status: (aiData.status as any) || undefined,
   };
 
   let mappedIntent: string = aiData.intent;
