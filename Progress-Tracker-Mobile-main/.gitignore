@@ -52,3 +52,7 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+
+# Build artifacts
+*.apk
+app-release.apk

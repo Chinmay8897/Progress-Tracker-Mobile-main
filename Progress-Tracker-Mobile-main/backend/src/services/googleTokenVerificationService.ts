@@ -26,7 +26,7 @@ export const googleTokenVerificationService = {
         throw new Error(authError?.message || "Failed to establish secure session");
       }
 
-      const profile = await ensureUserProfile({
+      const { profile, isNewUser } = await ensureUserProfile({
         id: authData.user.id,
         email: authData.user.email!,
         name: payload.name || payload.email!.split("@")[0],
@@ -36,6 +36,7 @@ export const googleTokenVerificationService = {
         token: authData.session.access_token,
         refreshToken: authData.session.refresh_token,
         user: sanitizeUser(profile, true),
+        isNewUser,
       };
     } catch (err: any) {
       console.error("[GoogleAuth] Verification failed:", err);

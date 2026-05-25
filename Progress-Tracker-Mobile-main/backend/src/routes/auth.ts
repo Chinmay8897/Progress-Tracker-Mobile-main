@@ -70,6 +70,10 @@ const resetPasswordSchema = z.object({
   newPassword: strongPassword,
 });
 
+const updatePhoneSchema = z.object({
+  phoneNumber: phoneSchema,
+});
+
 // --- GOOGLE AUTHENTICATION ---
 
 router.post("/google", authLimiter, async (req: Request, res: Response): Promise<void> => {
@@ -275,6 +279,42 @@ router.get("/me", requireAuth, async (req: Request, res: Response): Promise<void
     res.json(sanitizeUser(profile, true));
   } catch (err) {
     console.error("Get me error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.patch("/me/phone", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const parsed = updatePhoneSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Validation failed", details: parsed.error.flatten().fieldErrors });
+      return;
+    }
+    
+    if (!parsed.data.phoneNumber) {
+      res.status(400).json({ error: "Phone number is required" });
+      return;
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("users")
+      .update({ phone_number: parsed.data.phoneNumber, updated_at: new Date().toISOString() })
+      .eq("id", req.user!.userId)
+      .select("*")
+      .single();
+
+    if (error) {
+      if (error.code === '23505') {
+        res.status(409).json({ error: "This phone number is already registered to another user." });
+        return;
+      }
+      throw error;
+    }
+
+    await insertAuditLog("auth.add_phone", req.user!.userId);
+    res.json(sanitizeUser(data, true));
+  } catch (err: any) {
+    console.error("Update phone error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

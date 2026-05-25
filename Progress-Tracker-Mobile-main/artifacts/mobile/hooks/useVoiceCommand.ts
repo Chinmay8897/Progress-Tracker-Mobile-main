@@ -51,7 +51,7 @@ export function useVoiceCommand({ onResult, onEnd }: UseVoiceCommandOptions) {
         onResult: (text) => onResultRef.current(text),
         onEnd: () => onEndRef.current?.(),
       },
-      { maxListenMs: 15_000 },
+      { maxListenMs: 20_000 },
     );
   }
 

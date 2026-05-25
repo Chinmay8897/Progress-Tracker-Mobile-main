@@ -37,7 +37,7 @@ export async function ensureUserProfile(input: { id: string; email: string; name
   const existing = await getUserById(input.id);
   if (existing) {
     profileCache.set(input.id, { profile: existing, expiresAt: now + CACHE_TTL });
-    return existing;
+    return { profile: existing, isNewUser: false };
   }
 
   const fallbackName = input.name?.trim() || input.email.split("@")[0] || "User";
@@ -57,7 +57,7 @@ export async function ensureUserProfile(input: { id: string; email: string; name
 
   if (error) throw error;
   profileCache.set(input.id, { profile: data, expiresAt: Date.now() + CACHE_TTL });
-  return data;
+  return { profile: data, isNewUser: true };
 }
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -76,11 +76,12 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
   let profile;
   try {
-    profile = await ensureUserProfile({
+    const result = await ensureUserProfile({
       id: data.user.id,
       email: data.user.email,
       name: typeof data.user.user_metadata?.name === "string" ? data.user.user_metadata.name : null,
     });
+    profile = result.profile;
   } catch (err) {
     console.error("Auth profile upsert failed:", err);
     res.status(500).json({ error: "Could not initialize user profile" });

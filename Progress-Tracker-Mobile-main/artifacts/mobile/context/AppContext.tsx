@@ -34,6 +34,7 @@ import {
   type QueuedAction,
 } from "@/services/offlineQueue";
 import { clearCachedAppData, getCachedAppData, setCachedAppData } from "@/services/cache";
+import { googleAuthService } from "@/services/googleAuthService";
 import { logger } from "@/utils/logger";
 
 // ─── Types (match frontend expectations) ─────────────────────────────────────
@@ -71,8 +72,9 @@ interface AppContextType {
   users: User[];
   tasks: Task[];
   login: (email: string, password: string) => Promise<boolean>;
-  loginWithGoogle: (idToken: string) => Promise<boolean>;
+  loginWithGoogle: (idToken: string) => Promise<{ success: boolean; isNewUser: boolean }>;
   register: (name: string, email: string, password: string, phoneNumber?: string, role?: UserRole) => Promise<boolean>;
+  updatePhone: (phoneNumber: string) => Promise<void>;
   logout: () => void;
   addTask: (task: Omit<Task, "id" | "createdAt" | "updatedAt">) => Promise<void>;
   updateTask: (taskId: string, updates: Partial<Task>) => Promise<void>;
@@ -337,21 +339,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // ── Auth ──────────────────────────────────────────────────────────────────
 
-  const loginWithGoogle = useCallback(async (idToken: string): Promise<boolean> => {
+  const loginWithGoogle = useCallback(async (idToken: string): Promise<{ success: boolean; isNewUser: boolean }> => {
     try {
       const response = await authApi.loginWithGoogle(idToken);
+      const user = apiUserToUser(response.user);
+
       await setToken(response.token);
       await setRefreshToken(response.refreshToken);
       await setSupabaseSession(response.token, response.refreshToken);
-
-      const user = apiUserToUser(response.user);
       await setStoredUser(user as StoredUser);
+
       setCurrentUser(user);
 
       await fetchAllData();
       void registerDeviceToken();
 
-      return true;
+      return { success: true, isNewUser: !!response.isNewUser };
     } catch (err) {
       if (err instanceof ApiError) {
         logger.warn("AppContext", `Google login failed: ${err.message}`);
@@ -429,6 +432,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         logger.warn("AppContext", "Server logout failed; continuing with local session cleanup", err);
       }
       try {
+        await googleAuthService.signOut();
         await clearSession();
         await clearSupabaseSession();
         await clearQueue();
@@ -441,6 +445,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setTasks([]);
       }
     })();
+  }, []);
+
+  const updatePhone = useCallback(async (phoneNumber: string) => {
+    try {
+      const updatedApiUser = await authApi.updatePhone(phoneNumber);
+      const user = apiUserToUser(updatedApiUser);
+      await setStoredUser(user as StoredUser);
+      setCurrentUser(user);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        throw new Error(err.message || "Failed to update phone number");
+      }
+      throw err;
+    }
   }, []);
 
   // ── Task CRUD (with optimistic updates + offline queue) ───────────────────
@@ -634,6 +652,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     login,
     loginWithGoogle,
     register,
+    updatePhone,
     logout,
     addTask,
     updateTask,
@@ -650,7 +669,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     refreshData,
   }), [
     currentUser, users, tasks,
-    login, loginWithGoogle, register, logout,
+    login, loginWithGoogle, register, updatePhone, logout,
     addTask, updateTask, moveTaskToDate, deleteTask,
     addUser, updateUser, deleteUser,
     getTasksForUser, movePendingToNextDay,

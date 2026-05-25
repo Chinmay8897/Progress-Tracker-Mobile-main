@@ -3,6 +3,35 @@ import { logger } from "@/utils/logger";
 
 export const MAX_RETRIES = 4;
 
+let _apiClientConfigured = false;
+
+/**
+ * Mark the HTTP client layer as ready. Called once from appBootstrapService.
+ */
+export function configureApiClient(): void {
+  if (_apiClientConfigured) return;
+  _apiClientConfigured = true;
+
+  if (!config.apiBaseUrl) {
+    logger.warn("API", "EXPO_PUBLIC_API_BASE_URL is not set; API calls will fail until configured.");
+  }
+}
+
+/**
+ * Ensures bootstrap ran before any retried fetch. Throws with a clear message if not.
+ */
+export function ensureApiClientReady(): void {
+  if (!_apiClientConfigured) {
+    throw new Error(
+      "API client is not initialized. Application bootstrap did not complete — call bootstrapApp() first.",
+    );
+  }
+}
+
+export function isApiClientConfigured(): boolean {
+  return _apiClientConfigured;
+}
+
 // Custom event emitter for Cold Start to show full-screen UI
 export const apiEventEmitter = {
   listeners: new Set<(waking: boolean) => void>(),
@@ -36,6 +65,7 @@ export async function pingHealthEndpoint(): Promise<boolean> {
  * Fetch wrapper with automatic retry, exponential backoff, and cold-start detection.
  */
 export async function fetchWithRetry(url: string, options: RequestInit, retries = MAX_RETRIES): Promise<Response> {
+  ensureApiClientReady();
   let attempt = 0;
   
   while (attempt <= retries) {
