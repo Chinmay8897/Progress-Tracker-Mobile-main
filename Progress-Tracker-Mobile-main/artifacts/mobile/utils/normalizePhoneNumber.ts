@@ -17,7 +17,7 @@ export function normalizePhoneNumber(phone?: string | null): string | null {
 
   // Now we should have exactly 10 digits
   if (digits.length === 10) {
-    return `91${digits}`;
+    return `+91${digits}`;
   }
 
   // Invalid number length

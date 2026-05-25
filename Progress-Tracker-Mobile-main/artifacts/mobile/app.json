@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "TaskCommand",
+    "name": "PI",
     "slug": "taskcommand",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -17,8 +17,8 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.taskcommand.mobile",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "TaskCommand needs microphone access to securely record voice commands for AI transcription.",
-        "NSSpeechRecognitionUsageDescription": "TaskCommand processes your voice commands into actionable tasks.",
+        "NSMicrophoneUsageDescription": "PI needs microphone access to securely record voice commands for AI transcription.",
+        "NSSpeechRecognitionUsageDescription": "PI processes your voice commands into actionable tasks.",
         "ITSAppUsesNonExemptEncryption": false,
         "LSApplicationQueriesSchemes": [
           "whatsapp"
@@ -90,8 +90,8 @@
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "TaskCommand needs microphone access to process voice commands.",
-          "speechRecognitionPermission": "TaskCommand processes your voice commands into actionable tasks."
+          "microphonePermission": "PI needs microphone access to process voice commands.",
+          "speechRecognitionPermission": "PI processes your voice commands into actionable tasks."
         }
       ],
       [

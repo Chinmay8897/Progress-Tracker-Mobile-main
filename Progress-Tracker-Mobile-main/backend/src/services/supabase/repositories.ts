@@ -116,29 +116,10 @@ export async function getTaskById(id: string): Promise<TaskRow | null> {
 }
 
 export async function listTasksForUser(user: { userId: string; role: string }): Promise<TaskRow[]> {
-  if (normalizeAppRole(user.role) === "admin") {
-    const { data, error } = await supabaseAdmin
-      .from("tasks")
-      .select("*, task_assignments(user_id)")
-      .order("created_at", { ascending: false });
-    if (error) throw error;
-    return (data ?? []) as TaskRow[];
-  }
-
-  const { data: assignments, error: assignmentError } = await supabaseAdmin
-    .from("task_assignments")
-    .select("task_id")
-    .eq("user_id", user.userId);
-  if (assignmentError) throw assignmentError;
-
-  const taskIds = (assignments ?? []).map(a => a.task_id);
-  if (taskIds.length === 0) return [];
-
   const { data, error } = await supabaseAdmin
     .from("tasks")
     .select("*, task_assignments(user_id)")
-    .in("id", taskIds)
-    .order("deadline", { ascending: true });
+    .order("created_at", { ascending: false });
   if (error) throw error;
   return (data ?? []) as TaskRow[];
 }

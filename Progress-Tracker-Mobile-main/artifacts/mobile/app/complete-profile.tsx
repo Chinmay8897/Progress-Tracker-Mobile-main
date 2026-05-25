@@ -219,7 +219,7 @@ export default function CompleteProfileScreen() {
           <View style={styles.logoBox}>
             <Feather name="command" size={36} color={colors.primaryForeground} />
           </View>
-          <Text style={styles.appName}>TaskCommand</Text>
+          <Text style={styles.appName}>PI</Text>
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(150).duration(350)}>

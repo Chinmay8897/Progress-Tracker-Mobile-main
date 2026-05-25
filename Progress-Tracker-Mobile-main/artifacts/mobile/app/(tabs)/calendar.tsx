@@ -74,9 +74,9 @@ export default function CalendarScreen() {
 
   // Apply RBAC filtering
   const visibleTasks = useMemo(() => {
-    if (isAdmin && globalView) return tasks;
+    if (globalView) return tasks;
     return tasks.filter(t => t.assigneeId === currentUser?.id);
-  }, [tasks, isAdmin, globalView, currentUser]);
+  }, [tasks, globalView, currentUser]);
 
   // Group tasks by date key (using dueDate)
   const tasksByDate = useMemo(() => {
@@ -376,15 +376,13 @@ export default function CalendarScreen() {
               <Pressable style={styles.todayBtn} onPress={goToToday}>
                 <Text style={styles.todayBtnText}>Today</Text>
               </Pressable>
-              {isAdmin && (
-                <Pressable
-                  style={styles.globalToggle}
-                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setGlobalView(v => !v); }}
-                >
-                  <Feather name={globalView ? "globe" : "user"} size={12} color={globalView ? colors.primary : colors.headerForeground + "80"} />
-                  <Text style={styles.globalToggleText}>{globalView ? "Global" : "Mine"}</Text>
-                </Pressable>
-              )}
+              <Pressable
+                style={styles.globalToggle}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setGlobalView(v => !v); }}
+              >
+                <Feather name={globalView ? "globe" : "user"} size={12} color={globalView ? colors.primary : colors.headerForeground + "80"} />
+                <Text style={styles.globalToggleText}>{globalView ? "Global" : "Mine"}</Text>
+              </Pressable>
             </View>
           </View>
           <View style={styles.monthNav}>
@@ -482,12 +480,6 @@ export default function CalendarScreen() {
                   : `${selectedTasks.length} task${selectedTasks.length !== 1 ? "s" : ""} · ${pendingOnSelected.length} pending`}
               </Text>
             </View>
-            <Pressable
-              style={[styles.todayBtn, { backgroundColor: colors.primary + "15" }]}
-              onPress={() => setShowModal(true)}
-            >
-              <Text style={[styles.todayBtnText, { color: colors.primary }]}>+ Task</Text>
-            </Pressable>
           </View>
 
           {/* Moved banner */}
@@ -569,9 +561,6 @@ export default function CalendarScreen() {
         </Animated.View>
       </ScrollView>
 
-      <Pressable style={styles.fab} onPress={() => setShowModal(true)}>
-        <Feather name="plus" size={22} color={colors.primaryForeground} />
-      </Pressable>
 
       <TaskFormModal
         visible={showModal}

@@ -26,7 +26,7 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
 export default function TaskDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const colors = useColors();
-  const { tasks, users, deleteTask, isAdmin, updateTask, moveTaskToDate } = useApp();
+  const { tasks, users, currentUser, deleteTask, isAdmin, updateTask, moveTaskToDate } = useApp();
   const insets = useSafeAreaInsets();
   const [showEdit, setShowEdit] = useState(false);
   const [showMoveDate, setShowMoveDate] = useState(false);
@@ -35,6 +35,8 @@ export default function TaskDetailScreen() {
 
   const task = tasks.find(t => t.id === id);
   const assignee = task ? users.find(u => u.id === task.assigneeId) : null;
+  const isOwnTask = task?.assigneeId === currentUser?.id;
+  const canEdit = isAdmin || isOwnTask;
 
   if (!task) {
     return (
@@ -149,6 +151,13 @@ export default function TaskDetailScreen() {
     },
     priorityDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: priorityColor },
     priorityText: { fontSize: 11, fontWeight: "700", color: priorityColor, textTransform: "uppercase" },
+    viewOnlyBadge: {
+      paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8,
+      backgroundColor: colors.mutedForeground + "15",
+      alignSelf: "flex-start", marginBottom: 10, marginLeft: 8,
+      borderWidth: 1, borderColor: colors.mutedForeground + "30",
+    },
+    viewOnlyText: { fontSize: 11, fontWeight: "700", color: colors.mutedForeground, textTransform: "uppercase" },
     title: { fontSize: 22, fontWeight: "800", color: colors.headerForeground, lineHeight: 28 },
     content: { padding: 16 },
     card: { backgroundColor: colors.card, borderRadius: colors.radius, padding: 16, marginBottom: 12, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
@@ -241,7 +250,7 @@ export default function TaskDetailScreen() {
               <Pressable style={styles.actionBtn} onPress={handleShare}>
                 <Feather name="share-2" size={15} color={colors.headerForeground} />
               </Pressable>
-              {isAdmin && (
+              {canEdit && (
                 <>
                   <Pressable style={styles.actionBtn} onPress={() => setShowEdit(true)}>
                     <Feather name="edit-2" size={15} color={colors.headerForeground} />
@@ -256,9 +265,16 @@ export default function TaskDetailScreen() {
               )}
             </View>
           </View>
-          <View style={styles.priorityBadge}>
-            <View style={styles.priorityDot} />
-            <Text style={styles.priorityText}>{PRIORITY_LABELS[task.priority]}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <View style={styles.priorityBadge}>
+              <View style={styles.priorityDot} />
+              <Text style={styles.priorityText}>{PRIORITY_LABELS[task.priority]}</Text>
+            </View>
+            {!canEdit && (
+              <View style={styles.viewOnlyBadge}>
+                <Text style={styles.viewOnlyText}>View Only</Text>
+              </View>
+            )}
           </View>
           <Text style={styles.title}>{task.title}</Text>
         </View>
@@ -300,8 +316,8 @@ export default function TaskDetailScreen() {
               {STATUSES.map(s => (
                 <Pressable
                   key={s}
-                  style={[styles.statusChip, task.status === s && { borderColor: getStatusColor(s, colors), backgroundColor: getStatusColor(s, colors) + "15" }]}
-                  onPress={() => quickStatus(s)}
+                  style={[styles.statusChip, task.status === s && { borderColor: getStatusColor(s, colors), backgroundColor: getStatusColor(s, colors) + "15" }, !canEdit && { opacity: 0.5 }]}
+                  onPress={canEdit ? () => quickStatus(s) : undefined}
                 >
                   <Text style={[styles.statusText, task.status === s && { color: getStatusColor(s, colors) }]}>
                     {STATUS_LABELS[s]}
@@ -336,13 +352,16 @@ export default function TaskDetailScreen() {
               </View>
             </View>
 
-            <View style={[styles.metaRow, { marginBottom: 0 }]}>
-              <View style={{ width: 80 }} />
-              <Pressable style={styles.moveDateBtn} onPress={() => setShowMoveDate(true)}>
-                <Feather name="calendar" size={14} color={colors.mutedForeground} />
-                <Text style={styles.moveDateText}>Move to date</Text>
-              </Pressable>
-            </View>
+            {canEdit && (
+              <View style={[styles.metaRow, { marginBottom: 0 }]}>
+                <View style={{ width: 80 }} />
+                <Pressable style={styles.moveDateBtn} onPress={() => setShowMoveDate(true)}>
+                  <Feather name="calendar" size={14} color={colors.mutedForeground} />
+                  <Text style={styles.moveDateText}>Move to date</Text>
+                </Pressable>
+              </View>
+            )}
+            
             <View style={styles.metaRow}>
               <Text style={styles.metaLabel}>Created</Text>
               <Text style={styles.metaValue}>{new Date(task.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</Text>

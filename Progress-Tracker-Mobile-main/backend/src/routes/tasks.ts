@@ -47,9 +47,13 @@ const movePendingSchema = z.object({
 });
 
 function canAccessTask(task: { created_by: string; task_assignments?: Array<{ user_id: string }> }, user: Express.Request["user"]): boolean {
+  return !!user; // all authenticated users (managers and admins) can view all tasks
+}
+
+function canEditTask(task: { task_assignments?: Array<{ user_id: string }> }, user: Express.Request["user"]): boolean {
   if (!user) return false;
   if (user.role === "admin") return true;
-  return task.created_by === user.userId || !!task.task_assignments?.some(a => a.user_id === user.userId);
+  return !!task.task_assignments?.some(a => a.user_id === user.userId);
 }
 
 function routeParam(value: string | string[] | undefined): string {
@@ -187,8 +191,8 @@ router.put("/:id", requireAuth, async (req: Request, res: Response): Promise<voi
       res.status(404).json({ error: "Task not found" });
       return;
     }
-    if (!canAccessTask(task, req.user)) {
-      res.status(403).json({ error: "Insufficient permissions" });
+    if (!canEditTask(task, req.user)) {
+      res.status(403).json({ error: "Insufficient permissions to edit this task" });
       return;
     }
 
@@ -237,11 +241,16 @@ router.put("/:id", requireAuth, async (req: Request, res: Response): Promise<voi
   }
 });
 
-router.delete("/:id", requireAuth, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/:id", requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const task = await getTaskById(routeParam(req.params.id));
     if (!task) {
       res.status(404).json({ error: "Task not found" });
+      return;
+    }
+    
+    if (!canEditTask(task, req.user)) {
+      res.status(403).json({ error: "Insufficient permissions to delete this task" });
       return;
     }
 
@@ -267,11 +276,11 @@ router.post("/move-pending", requireAuth, async (req: Request, res: Response): P
 
     const { dateKey } = parsed.data;
     const allTasks = await listTasksForUser(req.user!);
-    const pending = allTasks.filter(t =>
-      t.deadline === dateKey &&
-      t.status !== "done" &&
-      t.status !== "cancelled"
-    );
+    const pending = allTasks.filter(t => {
+      if (t.deadline !== dateKey || t.status === "done" || t.status === "cancelled") return false;
+      if (req.user!.role === "admin") return true;
+      return t.task_assignments?.some(a => a.user_id === req.user!.userId);
+    });
 
     if (pending.length === 0) {
       res.json({ moved: 0 });

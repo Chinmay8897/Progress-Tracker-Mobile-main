@@ -299,11 +299,7 @@ export const voiceLogsApi = {
     api.post("/api/voice-logs", data),
 };
 
-export const notificationsApi = {
-  list: () => api.get("/api/notifications"),
-  log: (data: { type: string; message: string; targetUser: string; metadata?: Record<string, unknown> }) =>
-    api.post("/api/notifications", data),
-};
+
 
 export const deviceTokensApi = {
   register: (token: string, platform?: string) =>

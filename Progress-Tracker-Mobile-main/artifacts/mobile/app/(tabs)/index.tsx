@@ -23,7 +23,7 @@ import { executeCommand, type ExecutionContext } from "@/domain/voice/CommandExe
 import { requiresConfirmation, type ParsedCommand, type TaskPrefill } from "@/domain/voice/types";
 import { useColors } from "@/hooks/useColors";
 import { useVoiceCommand } from "@/hooks/useVoiceCommand";
-import { notificationsApi, voiceLogsApi } from "@/services/api";
+import { voiceLogsApi } from "@/services/api";
 
 type FilterType = "all" | Priority | TaskStatus | string;
 
@@ -62,21 +62,25 @@ export default function DashboardScreen() {
 
   // Confirmation flow state
   const [pendingCommand, setPendingCommand] = useState<ParsedCommand | null>(null);
+  const [globalView, setGlobalView] = useState(false);
   const executingCommandRef = useRef<string | null>(null);
   const voiceStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const myTasks = isAdmin ? tasks : tasks.filter(t => t.assigneeId === currentUser?.id);
+  const visibleTasks = useMemo(() => {
+    if (globalView) return tasks;
+    return tasks.filter(t => t.assigneeId === currentUser?.id);
+  }, [tasks, globalView, currentUser]);
 
   const stats = useMemo(() => ({
-    total: myTasks.length,
-    critical: myTasks.filter(t => t.priority === "critical" && t.status !== "done").length,
-    inProgress: myTasks.filter(t => t.status === "in_progress").length,
-    blocked: myTasks.filter(t => t.status === "blocked").length,
-    done: myTasks.filter(t => t.status === "done").length,
-  }), [myTasks]);
+    total: visibleTasks.length,
+    critical: visibleTasks.filter(t => t.priority === "critical" && t.status !== "done").length,
+    inProgress: visibleTasks.filter(t => t.status === "in_progress").length,
+    blocked: visibleTasks.filter(t => t.status === "blocked").length,
+    done: visibleTasks.filter(t => t.status === "done").length,
+  }), [visibleTasks]);
 
   const filtered = useMemo(() => {
-    let list = myTasks;
+    let list = visibleTasks;
     if (priorityFilter !== "all") list = list.filter(t => t.priority === priorityFilter);
     if (statusFilter !== "all") list = list.filter(t => t.status === statusFilter);
     if (assigneeFilter !== "all") list = list.filter(t => t.assigneeId === assigneeFilter);
@@ -88,7 +92,7 @@ export default function DashboardScreen() {
       const PO: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
       return (PO[a.priority] ?? 4) - (PO[b.priority] ?? 4);
     });
-  }, [myTasks, priorityFilter, statusFilter, assigneeFilter]);
+  }, [visibleTasks, priorityFilter, statusFilter, assigneeFilter]);
 
   const teamMembers = users;
   const assigneeOptions = [
@@ -143,12 +147,6 @@ export default function DashboardScreen() {
         case "moved":
         case "whatsapp_sent":
           setActionTaken(result.message);
-          void notificationsApi.log({
-            type: "whatsapp_forward",
-            message: result.message,
-            targetUser: ctx.currentUser.id,
-            metadata: { rawCommand: cmd.rawText, intent: cmd.intent },
-          }).catch(() => undefined);
           break;
         case "filters_cleared":
           setPriorityFilter("all");
@@ -365,6 +363,12 @@ export default function DashboardScreen() {
       borderWidth: 1.5,
       borderColor: voiceActive ? colors.critical : colors.border,
     },
+    globalToggle: {
+      flexDirection: "row", alignItems: "center", gap: 6,
+      backgroundColor: colors.card, paddingHorizontal: 12, paddingVertical: 6,
+      borderRadius: 16, borderWidth: 1, borderColor: colors.border,
+    },
+    globalToggleText: { fontSize: 12, fontWeight: "600", color: colors.mutedForeground },
     filterSection: { paddingHorizontal: 16, marginBottom: 6 },
     filterLabel: { fontSize: 10, fontWeight: "700", color: colors.mutedForeground, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 6 },
     voicePanelWrapper: {
@@ -380,10 +384,20 @@ export default function DashboardScreen() {
             <View>
               <Text style={styles.greeting}>Welcome back</Text>
               <Text style={styles.headerTitle}>
-                {isAdmin ? "Command Center" : currentUser?.name?.split(" ")[0]}
+                {isAdmin ? "Dashboard" : currentUser?.name?.split(" ")[0]}
               </Text>
             </View>
             <View style={styles.badgeRow}>
+              <Pressable
+                style={styles.globalToggle}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setGlobalView(v => !v);
+                }}
+              >
+                <Feather name={globalView ? "globe" : "user"} size={14} color={globalView ? colors.primary : colors.mutedForeground} />
+                <Text style={styles.globalToggleText}>{globalView ? "Global" : "My Tasks"}</Text>
+              </Pressable>
               {stats.critical > 0 && (
                 <View style={[styles.badge, { backgroundColor: colors.critical + "30" }]}>
                   <Text style={[styles.badgeText, { color: colors.critical }]}>{stats.critical} Critical</Text>

@@ -241,7 +241,7 @@ export default function SettingsScreen() {
             </Pressable>
           ) : (
             <Animated.View entering={FadeInDown.duration(200)} style={styles.confirmBox}>
-              <Text style={styles.confirmLabel}>Sign out of TaskCommand?</Text>
+              <Text style={styles.confirmLabel}>Sign out of PI?</Text>
               <Text style={styles.confirmSub}>You will need to sign in again to access your tasks.</Text>
               <View style={styles.confirmButtons}>
                 <Pressable style={styles.cancelBtn} onPress={() => setConfirmingLogout(false)}>

@@ -10,6 +10,8 @@ import TaskFormModal from "@/components/TaskFormModal";
 import { UserRole, TaskStatus, useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { usersApi } from "@/services/api";
+import { WhatsAppService } from "@/services/whatsappService";
+import { formatTaskListForWhatsApp } from "@/utils/formatTaskListForWhatsApp";
 
 const ROLE_LABELS: Record<UserRole, string> = {
   admin: "Admin",
@@ -34,6 +36,7 @@ export default function MemberProfileScreen() {
   const [isRoleChanging, setIsRoleChanging] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [actionFeedback, setActionFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [sharingWhatsApp, setSharingWhatsApp] = useState(false);
 
   const member = users.find(u => u.id === id);
   const allTasks = member ? getTasksForUser(member.id) : [];
@@ -110,6 +113,29 @@ export default function MemberProfileScreen() {
     }
   };
 
+  // ── Share Tasks handler ─────────────────────────────────────────────────
+  const handleShareTasks = async () => {
+    if (!member) return;
+    if (sortedTasks.length === 0) {
+      showFeedback("error", "No tasks to share in this view.");
+      return;
+    }
+
+    setSharingWhatsApp(true);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    try {
+      const filterLabelMap: Record<string, string> = { all: "All", in_progress: "Active", blocked: "Blocked", done: "Done" };
+      const activeFilterLabel = filterLabelMap[activeStatus] || "All";
+      const message = formatTaskListForWhatsApp(sortedTasks, activeFilterLabel);
+      await WhatsAppService.sendMessage(member, message);
+    } catch (err: any) {
+      showFeedback("error", err?.message || "Failed to open WhatsApp.");
+    } finally {
+      setSharingWhatsApp(false);
+    }
+  };
+
   // ── Initiate role change with self-protection ───────────────────────────
   const initiateRoleChange = () => {
     if (isSelf) {
@@ -164,7 +190,10 @@ export default function MemberProfileScreen() {
     filterBtnActive: { backgroundColor: colors.primary + "15", borderColor: colors.primary },
     filterText: { fontSize: 11, fontWeight: "600", color: colors.mutedForeground },
     filterTextActive: { color: colors.primary },
-    sectionTitle: { fontSize: 12, fontWeight: "700", color: colors.mutedForeground, letterSpacing: 0.8, textTransform: "uppercase", paddingHorizontal: 16, marginBottom: 8 },
+    taskHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, marginBottom: 8 },
+    sectionTitle: { fontSize: 12, fontWeight: "700", color: colors.mutedForeground, letterSpacing: 0.8, textTransform: "uppercase" },
+    shareBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: "#25D366" + "15", borderWidth: 1, borderColor: "#25D366" + "40" },
+    shareBtnText: { fontSize: 11, fontWeight: "700", color: "#25D366" },
     listPad: { paddingHorizontal: 16 },
     emptyState: { alignItems: "center", paddingVertical: 40 },
     emptyText: { fontSize: 14, color: colors.mutedForeground, marginTop: 10 },
@@ -518,7 +547,19 @@ export default function MemberProfileScreen() {
                 ))}
               </View>
             </ScrollView>
-            <Text style={styles.sectionTitle}>{sortedTasks.length} Tasks</Text>
+            <View style={styles.taskHeaderRow}>
+              <Text style={styles.sectionTitle}>{sortedTasks.length} Tasks</Text>
+              {isAdmin && sortedTasks.length > 0 && (
+                <Pressable
+                  style={[styles.shareBtn, sharingWhatsApp && styles.disabledBtn]}
+                  onPress={handleShareTasks}
+                  disabled={sharingWhatsApp}
+                >
+                  <Feather name="message-circle" size={12} color="#25D366" />
+                  <Text style={styles.shareBtnText}>{sharingWhatsApp ? "Opening..." : "Share Tasks"}</Text>
+                </Pressable>
+              )}
+            </View>
           </>
         )}
         renderItem={({ item, index }) => (

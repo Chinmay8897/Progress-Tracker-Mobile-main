@@ -311,7 +311,7 @@ export default function LoginScreen() {
           <View style={styles.logoBox}>
             <Feather name="command" size={36} color={colors.primaryForeground} />
           </View>
-          <Text style={styles.appName}>TaskCommand</Text>
+          <Text style={styles.appName}>PI</Text>
           <Text style={styles.tagline}>Centralized Team Intelligence</Text>
         </Animated.View>
 

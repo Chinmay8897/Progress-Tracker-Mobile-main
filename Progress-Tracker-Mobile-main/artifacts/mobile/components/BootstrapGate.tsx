@@ -53,7 +53,7 @@ export function BootstrapGate({ children }: BootstrapGateProps) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color="#4F46E5" />
-        <Text style={styles.loadingText}>Starting TaskCommand…</Text>
+        <Text style={styles.loadingText}>Starting PI…</Text>
       </View>
     );
   }

@@ -4,7 +4,7 @@ import type { ParsedCommand, ParsedEntities } from "@/domain/voice/types";
 import { parseDatePhrase } from "@/domain/voice/DateParser";
 
 const SYSTEM_PROMPT = `
-You are a highly capable Natural Language Understanding (NLU) assistant for a task management application called "TaskCommand".
+You are a highly capable Natural Language Understanding (NLU) assistant for a task management application called "PI".
 Your sole job is to extract the user's intent and any relevant entities from their voice command transcript.
 
 Supported intents:
