@@ -50,10 +50,10 @@ function canAccessTask(task: { created_by: string; task_assignments?: Array<{ us
   return !!user; // all authenticated users (managers and admins) can view all tasks
 }
 
-function canEditTask(task: { task_assignments?: Array<{ user_id: string }> }, user: Express.Request["user"]): boolean {
+function isTaskCreatorOrAdmin(task: { created_by: string }, user: Express.Request["user"]): boolean {
   if (!user) return false;
   if (user.role === "admin") return true;
-  return !!task.task_assignments?.some(a => a.user_id === user.userId);
+  return task.created_by === user.userId;
 }
 
 function routeParam(value: string | string[] | undefined): string {
@@ -191,12 +191,22 @@ router.put("/:id", requireAuth, async (req: Request, res: Response): Promise<voi
       res.status(404).json({ error: "Task not found" });
       return;
     }
-    if (!canEditTask(task, req.user)) {
-      res.status(403).json({ error: "Insufficient permissions to edit this task" });
-      return;
+    const data = parsed.data;
+    const isStatusOnly = Object.keys(data).length > 0 && Object.keys(data).every(k => k === "status");
+
+    if (isStatusOnly) {
+      const isAssigned = task.task_assignments?.some(a => a.user_id === req.user!.userId);
+      if (!isAssigned && !isTaskCreatorOrAdmin(task, req.user)) {
+        res.status(403).json({ error: "Insufficient permissions to change task status" });
+        return;
+      }
+    } else {
+      if (!isTaskCreatorOrAdmin(task, req.user)) {
+        res.status(403).json({ error: "Insufficient permissions to edit this task" });
+        return;
+      }
     }
 
-    const data = parsed.data;
     const updatePayload = {
       title: data.title ?? task.title,
       description: data.description ?? task.description,
@@ -249,7 +259,7 @@ router.delete("/:id", requireAuth, async (req: Request, res: Response): Promise<
       return;
     }
     
-    if (!canEditTask(task, req.user)) {
+    if (!isTaskCreatorOrAdmin(task, req.user)) {
       res.status(403).json({ error: "Insufficient permissions to delete this task" });
       return;
     }

@@ -36,7 +36,10 @@ export default function TaskDetailScreen() {
   const task = tasks.find(t => t.id === id);
   const assignee = task ? users.find(u => u.id === task.assigneeId) : null;
   const isOwnTask = task?.assigneeId === currentUser?.id;
-  const canEdit = isAdmin || isOwnTask;
+  const didICreateIt = task?.createdBy === currentUser?.id;
+  
+  const canEdit = isAdmin || didICreateIt;
+  const canChangeStatus = canEdit || isOwnTask;
 
   if (!task) {
     return (
@@ -112,13 +115,14 @@ export default function TaskDetailScreen() {
 
   const handleDeleteConfirm = async () => {
     setDeleting(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    
+    // Navigate back immediately so we don't flash "Task not found"
+    router.back();
+    
     try {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       await deleteTask(task.id);
-      router.back();
     } catch (err: any) {
-      setDeleting(false);
-      setConfirmingDelete(false);
       Alert.alert("Error", err.message || "Failed to delete task");
     }
   };
@@ -246,12 +250,12 @@ export default function TaskDetailScreen() {
               <Feather name="arrow-left" size={16} color={colors.headerForeground + "99"} />
               <Text style={styles.backText}>Back</Text>
             </Pressable>
-            <View style={styles.actionRow}>
-              <Pressable style={styles.actionBtn} onPress={handleShare}>
-                <Feather name="share-2" size={15} color={colors.headerForeground} />
-              </Pressable>
+            <View style={styles.headerActions}>
               {canEdit && (
                 <>
+                  <Pressable style={styles.actionBtn} onPress={handleShare}>
+                    <Feather name="share-2" size={15} color={colors.headerForeground} />
+                  </Pressable>
                   <Pressable style={styles.actionBtn} onPress={() => setShowEdit(true)}>
                     <Feather name="edit-2" size={15} color={colors.headerForeground} />
                   </Pressable>
@@ -270,7 +274,7 @@ export default function TaskDetailScreen() {
               <View style={styles.priorityDot} />
               <Text style={styles.priorityText}>{PRIORITY_LABELS[task.priority]}</Text>
             </View>
-            {!canEdit && (
+            {!canChangeStatus && (
               <View style={styles.viewOnlyBadge}>
                 <Text style={styles.viewOnlyText}>View Only</Text>
               </View>
@@ -316,8 +320,8 @@ export default function TaskDetailScreen() {
               {STATUSES.map(s => (
                 <Pressable
                   key={s}
-                  style={[styles.statusChip, task.status === s && { borderColor: getStatusColor(s, colors), backgroundColor: getStatusColor(s, colors) + "15" }, !canEdit && { opacity: 0.5 }]}
-                  onPress={canEdit ? () => quickStatus(s) : undefined}
+                  style={[styles.statusChip, task.status === s && { borderColor: getStatusColor(s, colors), backgroundColor: getStatusColor(s, colors) + "15" }, !canChangeStatus && { opacity: 0.5 }]}
+                  onPress={canChangeStatus ? () => quickStatus(s) : undefined}
                 >
                   <Text style={[styles.statusText, task.status === s && { color: getStatusColor(s, colors) }]}>
                     {STATUS_LABELS[s]}

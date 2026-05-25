@@ -62,14 +62,14 @@ export default function DashboardScreen() {
 
   // Confirmation flow state
   const [pendingCommand, setPendingCommand] = useState<ParsedCommand | null>(null);
-  const [globalView, setGlobalView] = useState(false);
+  const [globalView, setGlobalView] = useState(isAdmin);
   const executingCommandRef = useRef<string | null>(null);
   const voiceStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const visibleTasks = useMemo(() => {
-    if (globalView) return tasks;
+    if (isAdmin && globalView) return tasks;
     return tasks.filter(t => t.assigneeId === currentUser?.id);
-  }, [tasks, globalView, currentUser]);
+  }, [tasks, globalView, currentUser, isAdmin]);
 
   const stats = useMemo(() => ({
     total: visibleTasks.length,
@@ -388,16 +388,18 @@ export default function DashboardScreen() {
               </Text>
             </View>
             <View style={styles.badgeRow}>
-              <Pressable
-                style={styles.globalToggle}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setGlobalView(v => !v);
-                }}
-              >
-                <Feather name={globalView ? "globe" : "user"} size={14} color={globalView ? colors.primary : colors.mutedForeground} />
-                <Text style={styles.globalToggleText}>{globalView ? "Global" : "My Tasks"}</Text>
-              </Pressable>
+              {isAdmin && (
+                <Pressable
+                  style={styles.globalToggle}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setGlobalView(v => !v);
+                  }}
+                >
+                  <Feather name={globalView ? "globe" : "user"} size={14} color={globalView ? colors.primary : colors.mutedForeground} />
+                  <Text style={styles.globalToggleText}>{globalView ? "Global" : "My Tasks"}</Text>
+                </Pressable>
+              )}
               {stats.critical > 0 && (
                 <View style={[styles.badge, { backgroundColor: colors.critical + "30" }]}>
                   <Text style={[styles.badgeText, { color: colors.critical }]}>{stats.critical} Critical</Text>

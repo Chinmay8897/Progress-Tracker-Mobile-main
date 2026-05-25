@@ -55,7 +55,7 @@ export default function CalendarScreen() {
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [selectedDateKey, setSelectedDateKey] = useState<string>(todayKey);
-  const [globalView, setGlobalView] = useState(true);
+  const [globalView, setGlobalView] = useState(isAdmin);
   const [showModal, setShowModal] = useState(false);
   const [moving, setMoving] = useState(false);
   const [movedCount, setMovedCount] = useState<number | null>(null);
@@ -74,9 +74,9 @@ export default function CalendarScreen() {
 
   // Apply RBAC filtering
   const visibleTasks = useMemo(() => {
-    if (globalView) return tasks;
+    if (isAdmin && globalView) return tasks;
     return tasks.filter(t => t.assigneeId === currentUser?.id);
-  }, [tasks, globalView, currentUser]);
+  }, [tasks, globalView, currentUser, isAdmin]);
 
   // Group tasks by date key (using dueDate)
   const tasksByDate = useMemo(() => {
@@ -376,13 +376,15 @@ export default function CalendarScreen() {
               <Pressable style={styles.todayBtn} onPress={goToToday}>
                 <Text style={styles.todayBtnText}>Today</Text>
               </Pressable>
-              <Pressable
-                style={styles.globalToggle}
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setGlobalView(v => !v); }}
-              >
-                <Feather name={globalView ? "globe" : "user"} size={12} color={globalView ? colors.primary : colors.headerForeground + "80"} />
-                <Text style={styles.globalToggleText}>{globalView ? "Global" : "Mine"}</Text>
-              </Pressable>
+              {isAdmin && (
+                <Pressable
+                  style={styles.globalToggle}
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setGlobalView(v => !v); }}
+                >
+                  <Feather name={globalView ? "globe" : "user"} size={12} color={globalView ? colors.primary : colors.headerForeground + "80"} />
+                  <Text style={styles.globalToggleText}>{globalView ? "Global" : "Mine"}</Text>
+                </Pressable>
+              )}
             </View>
           </View>
           <View style={styles.monthNav}>
@@ -429,20 +431,19 @@ export default function CalendarScreen() {
               const dots = getPriorityDots(dateKey);
 
               return (
-                <Pressable
-                  key={dateKey}
-                  style={styles.dayCell}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setSelectedDateKey(dateKey);
-                    setMovedCount(null);
-                  }}
-                >
-                  <View style={[
-                    styles.dayInner,
-                    isSelected && { backgroundColor: colors.primary },
-                    isToday && !isSelected && { backgroundColor: colors.primary + "20" },
-                  ]}>
+                <View key={dateKey} style={styles.dayCell}>
+                  <Pressable
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setSelectedDateKey(dateKey);
+                      setMovedCount(null);
+                    }}
+                    style={[
+                      styles.dayInner,
+                      isSelected && { backgroundColor: colors.primary },
+                      isToday && !isSelected && { backgroundColor: colors.primary + "20" },
+                    ]}
+                  >
                     <Text style={[
                       styles.dayNumber,
                       isSelected && { color: colors.primaryForeground, fontWeight: "800" },
@@ -450,7 +451,7 @@ export default function CalendarScreen() {
                     ]}>
                       {day}
                     </Text>
-                  </View>
+                  </Pressable>
                   {dots.length > 0 && (
                     <View style={styles.dotsRow}>
                       {dots.map((p, i) => (
@@ -461,7 +462,7 @@ export default function CalendarScreen() {
                       ))}
                     </View>
                   )}
-                </Pressable>
+                </View>
               );
             })}
           </View>
