@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import React, { useState } from "react";
-import { FlatList, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, Platform, Pressable, StyleSheet, Text, View, RefreshControl } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AddMemberModal from "@/components/AddMemberModal";
@@ -10,14 +10,24 @@ import { useColors } from "@/hooks/useColors";
 
 export default function TeamScreen() {
   const colors = useColors();
-  const { users, isAdmin, currentUser } = useApp();
+  const { users, isAdmin, currentUser, refreshData } = useApp();
   const insets = useSafeAreaInsets();
   const [showAdd, setShowAdd] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const teamMembers = isAdmin
     ? users.filter(u => u.id !== currentUser?.id)
     : users;
   const topPadding = insets.top + (Platform.OS === "web" ? 67 : 0);
+
+  const onRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refreshData();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshData]);
 
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
@@ -79,6 +89,14 @@ export default function TeamScreen() {
         )}
         ListFooterComponent={<View style={styles.bottomSpace} />}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
       />
 
       <AddMemberModal visible={showAdd} onClose={() => setShowAdd(false)} />

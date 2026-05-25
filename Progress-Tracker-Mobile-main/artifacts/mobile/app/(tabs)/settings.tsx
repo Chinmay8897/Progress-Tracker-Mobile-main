@@ -5,6 +5,7 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-n
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ThemePickerModal from "@/components/ThemePickerModal";
+import EditProfileModal from "@/components/EditProfileModal";
 import { UserRole, useApp } from "@/context/AppContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useColors } from "@/hooks/useColors";
@@ -21,6 +22,7 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const [confirmingLogout, setConfirmingLogout] = useState(false);
   const [showThemePicker, setShowThemePicker] = useState(false);
+  const [showEditProfile, setShowEditProfile] = useState(false);
 
   const topPadding = insets.top + (Platform.OS === "web" ? 67 : 0);
   const bottomPadding = insets.bottom + 100 + (Platform.OS === "web" ? 34 : 0);
@@ -55,6 +57,17 @@ export default function SettingsScreen() {
       paddingBottom: 24,
       backgroundColor: colors.header,
       alignItems: "center",
+    },
+    editBtn: {
+      position: "absolute",
+      top: topPadding + 16,
+      right: 20,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.primary + "15",
+      alignItems: "center",
+      justifyContent: "center",
     },
     avatar: {
       width: 72,
@@ -165,11 +178,17 @@ export default function SettingsScreen() {
     <View style={styles.container}>
       <Animated.View entering={FadeIn.duration(300)}>
         <View style={styles.header}>
+          <Pressable style={styles.editBtn} onPress={() => setShowEditProfile(true)}>
+            <Feather name="edit-2" size={16} color={colors.primary} />
+          </Pressable>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{initials}</Text>
           </View>
           <Text style={styles.name}>{currentUser?.name}</Text>
           <Text style={styles.email}>{currentUser?.email}</Text>
+          {currentUser?.phoneNumber ? (
+            <Text style={styles.email}>{currentUser?.phoneNumber}</Text>
+          ) : null}
           <View style={styles.roleBadge}>
             <Text style={styles.roleText}>{ROLE_LABELS[currentUser?.role ?? "manager"]}</Text>
           </View>
@@ -197,16 +216,7 @@ export default function SettingsScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Preferences</Text>
-          <Pressable style={styles.menuItem}>
-            <View style={[styles.menuIcon, { backgroundColor: colors.primary + "15" }]}>
-              <Feather name="bell" size={18} color={colors.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.menuLabel}>Notifications</Text>
-              <Text style={styles.menuSub}>Task reminders and alerts</Text>
-            </View>
-            <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
-          </Pressable>
+
           <Pressable style={styles.menuItem} onPress={() => setShowThemePicker(true)}>
             <View style={[styles.menuIcon, { backgroundColor: colors.done + "15" }]}>
               <Feather name="moon" size={18} color={colors.done} />
@@ -247,6 +257,7 @@ export default function SettingsScreen() {
       </ScrollView>
 
       <ThemePickerModal visible={showThemePicker} onClose={() => setShowThemePicker(false)} />
+      <EditProfileModal visible={showEditProfile} onClose={() => setShowEditProfile(false)} />
     </View>
   );
 }

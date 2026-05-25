@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Text,
   View,
+  RefreshControl,
 } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -42,8 +43,11 @@ function parseDateKeyOrToday(key: string): Date {
 
 export default function CalendarScreen() {
   const colors = useColors();
-  const { tasks, currentUser, isAdmin, movePendingToNextDay } = useApp();
+  const { tasks, currentUser, isAdmin, movePendingToNextDay, refreshData } = useApp();
   const insets = useSafeAreaInsets();
+
+  const [refreshing, setRefreshing] = useState(false);
+
 
   const today = new Date();
   const todayKey = toDateKey(today);
@@ -58,6 +62,15 @@ export default function CalendarScreen() {
 
   const topPadding = insets.top + (Platform.OS === "web" ? 67 : 0);
   const bottomPadding = insets.bottom + 100 + (Platform.OS === "web" ? 34 : 0);
+
+  const onRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refreshData();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshData]);
 
   // Apply RBAC filtering
   const visibleTasks = useMemo(() => {
@@ -386,7 +399,18 @@ export default function CalendarScreen() {
         </View>
       </Animated.View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: bottomPadding }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: bottomPadding }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
         {/* Calendar grid */}
         <View style={styles.calendarWrapper}>
           <View style={styles.dowRow}>
@@ -458,14 +482,12 @@ export default function CalendarScreen() {
                   : `${selectedTasks.length} task${selectedTasks.length !== 1 ? "s" : ""} · ${pendingOnSelected.length} pending`}
               </Text>
             </View>
-            {isAdmin && (
-              <Pressable
-                style={[styles.todayBtn, { backgroundColor: colors.primary + "15" }]}
-                onPress={() => setShowModal(true)}
-              >
-                <Text style={[styles.todayBtnText, { color: colors.primary }]}>+ Task</Text>
-              </Pressable>
-            )}
+            <Pressable
+              style={[styles.todayBtn, { backgroundColor: colors.primary + "15" }]}
+              onPress={() => setShowModal(true)}
+            >
+              <Text style={[styles.todayBtnText, { color: colors.primary }]}>+ Task</Text>
+            </Pressable>
           </View>
 
           {/* Moved banner */}
@@ -506,11 +528,9 @@ export default function CalendarScreen() {
               </View>
               <Text style={styles.emptyTitle}>No tasks scheduled</Text>
               <Text style={styles.emptySub}>Nothing due on this day. Tap below to schedule a task.</Text>
-                {isAdmin && (
-                <Pressable style={styles.emptyCreateBtn} onPress={() => setShowModal(true)}>
-                  <Text style={styles.emptyCreateText}>Create a Task</Text>
-                </Pressable>
-              )}
+              <Pressable style={styles.emptyCreateBtn} onPress={() => setShowModal(true)}>
+                <Text style={styles.emptyCreateText}>Create a Task</Text>
+              </Pressable>
             </View>
           ) : (
             selectedTasks.map((task, idx) => {
@@ -549,11 +569,9 @@ export default function CalendarScreen() {
         </Animated.View>
       </ScrollView>
 
-      {isAdmin && (
-        <Pressable style={styles.fab} onPress={() => setShowModal(true)}>
-          <Feather name="plus" size={22} color={colors.primaryForeground} />
-        </Pressable>
-      )}
+      <Pressable style={styles.fab} onPress={() => setShowModal(true)}>
+        <Feather name="plus" size={22} color={colors.primaryForeground} />
+      </Pressable>
 
       <TaskFormModal
         visible={showModal}

@@ -74,7 +74,7 @@ interface AppContextType {
   login: (email: string, password: string) => Promise<boolean>;
   loginWithGoogle: (idToken: string) => Promise<{ success: boolean; isNewUser: boolean }>;
   register: (name: string, email: string, password: string, phoneNumber?: string, role?: UserRole) => Promise<boolean>;
-  updatePhone: (phoneNumber: string) => Promise<void>;
+  updateProfile: (data: { name?: string; phoneNumber?: string }) => Promise<void>;
   logout: () => void;
   addTask: (task: Omit<Task, "id" | "createdAt" | "updatedAt">) => Promise<void>;
   updateTask: (taskId: string, updates: Partial<Task>) => Promise<void>;
@@ -447,15 +447,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  const updatePhone = useCallback(async (phoneNumber: string) => {
+  const updateProfile = useCallback(async (data: { name?: string; phoneNumber?: string }) => {
     try {
-      const updatedApiUser = await authApi.updatePhone(phoneNumber);
+      const updatedApiUser = await authApi.updateProfile(data);
       const user = apiUserToUser(updatedApiUser);
       await setStoredUser(user as StoredUser);
       setCurrentUser(user);
+      setUsers(prev => prev.map(u => u.id === user.id ? user : u));
     } catch (err) {
       if (err instanceof ApiError) {
-        throw new Error(err.message || "Failed to update phone number");
+        throw new Error(err.message || "Failed to update profile");
       }
       throw err;
     }
@@ -652,7 +653,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     login,
     loginWithGoogle,
     register,
-    updatePhone,
+    updateProfile,
     logout,
     addTask,
     updateTask,
@@ -669,7 +670,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     refreshData,
   }), [
     currentUser, users, tasks,
-    login, loginWithGoogle, register, updatePhone, logout,
+    login, loginWithGoogle, register, updateProfile, logout,
     addTask, updateTask, moveTaskToDate, deleteTask,
     addUser, updateUser, deleteUser,
     getTasksForUser, movePendingToNextDay,

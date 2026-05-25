@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import React, { useMemo, useState } from "react";
-import { FlatList, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, Platform, Pressable, StyleSheet, Text, View, RefreshControl } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import FilterChips from "@/components/FilterChips";
@@ -21,10 +21,11 @@ const STATUS_OPTIONS = [
 
 export default function TasksScreen() {
   const colors = useColors();
-  const { tasks, currentUser, isAdmin } = useApp();
+  const { tasks, currentUser, isAdmin, refreshData } = useApp();
   const insets = useSafeAreaInsets();
   const [statusFilter, setStatusFilter] = useState("all");
   const [showModal, setShowModal] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const myTasks = isAdmin ? tasks : tasks.filter(t => t.assigneeId === currentUser?.id);
 
@@ -43,6 +44,15 @@ export default function TasksScreen() {
 
   const topPadding = insets.top + (Platform.OS === "web" ? 67 : 0);
   const bottomPadding = insets.bottom + 100 + (Platform.OS === "web" ? 34 : 0);
+
+  const onRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refreshData();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshData]);
 
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
@@ -109,6 +119,14 @@ export default function TasksScreen() {
         )}
         contentContainerStyle={{ paddingBottom: bottomPadding }}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
       />
 
       <TaskFormModal visible={showModal} onClose={() => setShowModal(false)} />

@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   View,
+  RefreshControl,
 } from "react-native";
 import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -17,7 +18,7 @@ import TaskCard from "@/components/TaskCard";
 import TaskFormModal from "@/components/TaskFormModal";
 import VoiceCommandPanel from "@/components/VoiceCommandPanel";
 import { Priority, TaskStatus, useApp } from "@/context/AppContext";
-import { parseCommand } from "@/domain/voice/CommandParser";
+import { parseCommandAsync } from "@/domain/voice/CommandParser";
 import { executeCommand, type ExecutionContext } from "@/domain/voice/CommandExecutor";
 import { requiresConfirmation, type ParsedCommand, type TaskPrefill } from "@/domain/voice/types";
 import { useColors } from "@/hooks/useColors";
@@ -44,8 +45,11 @@ const STATUS_OPTIONS = [
 
 export default function DashboardScreen() {
   const colors = useColors();
-  const { tasks, users, currentUser, isAdmin, addTask, updateTask, moveTaskToDate } = useApp();
+  const { tasks, users, currentUser, isAdmin, addTask, updateTask, moveTaskToDate, deleteTask, refreshData } = useApp();
   const insets = useSafeAreaInsets();
+
+  const [refreshing, setRefreshing] = useState(false);
+
 
   const [priorityFilter, setPriorityFilter] = useState<FilterType>("all");
   const [statusFilter, setStatusFilter] = useState<FilterType>("all");
@@ -95,12 +99,21 @@ export default function DashboardScreen() {
   const topPadding = insets.top + (Platform.OS === "web" ? 67 : 0);
   const bottomPadding = insets.bottom + 100 + (Platform.OS === "web" ? 34 : 0);
 
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refreshData();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshData]);
+
   // ── Build execution context ───────────────────────────────────────────────
 
   const buildExecCtx = useCallback((): ExecutionContext | null => {
     if (!currentUser) return null;
-    return { users, tasks, currentUser, addTask, updateTask, moveTaskToDate };
-  }, [users, tasks, currentUser, addTask, updateTask, moveTaskToDate]);
+    return { users, tasks, currentUser, addTask, updateTask, moveTaskToDate, deleteTask };
+  }, [users, tasks, currentUser, addTask, updateTask, moveTaskToDate, deleteTask]);
 
   // ── Execute a parsed command ──────────────────────────────────────────────
 
@@ -200,14 +213,14 @@ export default function DashboardScreen() {
 
   // ── Process incoming text (from voice or manual input) ────────────────────
 
-  const processCommand = useCallback((text: string) => {
+  const processCommand = useCallback(async (text: string) => {
     const raw = text.trim();
     if (!raw) return;
 
     setActionTaken(null);
     setPendingCommand(null);
 
-    const parsed = parseCommand(raw, {
+    const parsed = await parseCommandAsync(raw, {
       knownUsers: users.map(u => ({ name: u.name })),
     });
 
@@ -383,6 +396,7 @@ export default function DashboardScreen() {
       <FlatList
         data={filtered}
         keyExtractor={item => item.id}
+        extraData={{ users, priorityFilter, statusFilter, assigneeFilter, stats }}
         ListHeaderComponent={() => (
           <>
             <View style={styles.statsRow}>
@@ -429,6 +443,14 @@ export default function DashboardScreen() {
         )}
         contentContainerStyle={{ paddingBottom: bottomPadding }}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
       />
 
       {/* Voice FAB — admin only */}

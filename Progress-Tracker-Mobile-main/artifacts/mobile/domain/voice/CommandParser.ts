@@ -23,6 +23,7 @@ import {
   resolveAssignee,
   type AssigneeResolutionResult,
 } from "@/utils/assigneeResolver";
+import { extractIntentWithAI } from "@/services/aiIntentExtractionService";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -195,7 +196,19 @@ function detectIntent(lower: string): string {
 
 // ─── Main Parser ────────────────────────────────────────────────────────────
 
-export function parseCommand(text: string, ctx: ParserContext = {}): ParsedCommand {
+export async function parseCommandAsync(text: string, ctx: ParserContext = {}): Promise<ParsedCommand> {
+  try {
+    const knownUserNames = ctx.knownUsers ? ctx.knownUsers.map(u => u.name) : [];
+    // Only attempt AI for longer natural language commands, bare keywords can go to fallback or we can always try AI.
+    // We will always try AI.
+    return await extractIntentWithAI(text, knownUserNames);
+  } catch (err) {
+    console.error("[CommandParser] AI intent extraction failed, falling back to regex parser.", err);
+    return parseCommandFallback(text, ctx);
+  }
+}
+
+export function parseCommandFallback(text: string, ctx: ParserContext = {}): ParsedCommand {
   // Normalize device STT output: strip filler words, collapse whitespace, trim
   const rawText = normalizeTranscript(text);
   if (!rawText) return { intent: "unknown", rawText: text.trim(), entities: { sendWhatsApp: false } };

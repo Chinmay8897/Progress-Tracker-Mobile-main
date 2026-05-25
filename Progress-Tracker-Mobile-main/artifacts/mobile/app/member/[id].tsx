@@ -306,6 +306,9 @@ export default function MemberProfileScreen() {
                 )}
               </View>
               <Text style={styles.email}>{member.email}</Text>
+              {member.phoneNumber ? (
+                <Text style={styles.email}>{member.phoneNumber}</Text>
+              ) : null}
             </View>
           </View>
         </View>

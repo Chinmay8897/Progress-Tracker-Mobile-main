@@ -266,8 +266,8 @@ export const authApi = {
     api.post<{ success: boolean; message: string }>("/api/auth/verify-otp", { email, code }, { skipAuth: true }),
   resetPassword: (email: string, newPassword: string) =>
     api.post<{ success: boolean; message: string }>("/api/auth/reset-password", { email, newPassword }, { skipAuth: true }),
-  updatePhone: (phoneNumber: string) =>
-    api.patch<ApiUser>("/api/auth/me/phone", { phoneNumber }),
+  updateProfile: (data: { name?: string; phoneNumber?: string }) =>
+    api.patch<ApiUser>("/api/auth/me/profile", data),
 };
 
 export const usersApi = {

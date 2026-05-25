@@ -70,7 +70,8 @@ const resetPasswordSchema = z.object({
   newPassword: strongPassword,
 });
 
-const updatePhoneSchema = z.object({
+const updateProfileSchema = z.object({
+  name: z.string().min(1, "Name is required").max(100).trim().optional(),
   phoneNumber: phoneSchema,
 });
 
@@ -283,22 +284,30 @@ router.get("/me", requireAuth, async (req: Request, res: Response): Promise<void
   }
 });
 
-router.patch("/me/phone", requireAuth, async (req: Request, res: Response): Promise<void> => {
+router.patch("/me/profile", requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
-    const parsed = updatePhoneSchema.safeParse(req.body);
+    const parsed = updateProfileSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "Validation failed", details: parsed.error.flatten().fieldErrors });
       return;
     }
-    
-    if (!parsed.data.phoneNumber) {
-      res.status(400).json({ error: "Phone number is required" });
+
+    const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+    if (parsed.data.name !== undefined) {
+      updates.name = parsed.data.name;
+    }
+    if (parsed.data.phoneNumber !== undefined) {
+      updates.phone_number = parsed.data.phoneNumber;
+    }
+
+    if (Object.keys(updates).length === 1) {
+      res.status(400).json({ error: "No fields to update" });
       return;
     }
 
     const { data, error } = await supabaseAdmin
       .from("users")
-      .update({ phone_number: parsed.data.phoneNumber, updated_at: new Date().toISOString() })
+      .update(updates)
       .eq("id", req.user!.userId)
       .select("*")
       .single();
@@ -311,10 +320,17 @@ router.patch("/me/phone", requireAuth, async (req: Request, res: Response): Prom
       throw error;
     }
 
-    await insertAuditLog("auth.add_phone", req.user!.userId);
+    // Also update name in auth if it was changed
+    if (parsed.data.name !== undefined) {
+      await supabaseAdmin.auth.admin.updateUserById(req.user!.userId, {
+        user_metadata: { name: parsed.data.name }
+      });
+    }
+
+    await insertAuditLog("auth.update_profile", req.user!.userId);
     res.json(sanitizeUser(data, true));
   } catch (err: any) {
-    console.error("Update phone error:", err);
+    console.error("Update profile error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

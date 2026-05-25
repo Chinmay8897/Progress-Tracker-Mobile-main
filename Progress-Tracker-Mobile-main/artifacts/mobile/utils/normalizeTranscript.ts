@@ -26,7 +26,7 @@ const FILLER_WORDS = /\b(?:um+|uh+|ah+|er+|hmm+|like|well|okay|ok|please|pls|plz
  * Honorific/title patterns that often appear in Indian English speech.
  * We keep the name but strip the title for matching purposes.
  */
-const HONORIFICS = /\b(?:mr\.?|mrs\.?|ms\.?|dr\.?|prof\.?|sir|ma'?am|madam|ji|bhai|didi|bro)\b/gi;
+const HONORIFICS = /\b(?:mr|mrs|ms|dr|prof|sir|ma'?am|madam|ji|bhai|didi|bro)\b\.?/gi;
 
 /**
  * Normalize a raw speech recognition transcript for command parsing.
@@ -44,19 +44,19 @@ export function normalizeTranscript(raw: string): string {
   if (!raw) return "";
 
   let cleaned = raw
+    .toLowerCase()
     // Step 1: Remove multi-word filler phrases first
     .replace(FILLER_PHRASES, " ")
     // Step 2: Remove single filler words
     .replace(FILLER_WORDS, " ")
-    // Step 3: Remove trailing punctuation that speech engines sometimes add
-    .replace(/[.!?]+$/g, "")
-    // Step 4: Remove accidental commas/semicolons (but preserve hyphens/apostrophes in names)
-    .replace(/[,;:]+/g, " ")
-    // Step 5: Collapse repeated words from stuttering ("the the" → "the")
-    .replace(/\b(\w+)\s+\1\b/gi, "$1")
-    // Step 6: Collapse multiple spaces
+    // Step 3: Remove trailing and accidental internal punctuation (commas, periods, semicolons, etc.)
+    // We preserve hyphens and apostrophes for names, and ampersands/at-signs for task titles.
+    .replace(/[.,;:\!?]+/g, " ")
+    // Step 4: Collapse repeated words from stuttering ("the the the" → "the")
+    .replace(/\b(\w+)(?:\s+\1\b)+/gi, "$1")
+    // Step 5: Collapse multiple spaces
     .replace(/\s+/g, " ")
-    // Step 7: Trim
+    // Step 6: Trim
     .trim();
 
   return cleaned;
